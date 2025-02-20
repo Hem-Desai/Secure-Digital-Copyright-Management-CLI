@@ -1,5 +1,4 @@
-
-```markdown:README.md
+````markdown:README.md
 # Secure Digital Copyright Management CLI
 
 A secure command-line interface (CLI) application for managing copyrighted digital content (lyrics, scores, audio files) with encryption, access control, and comprehensive audit logging.
@@ -48,7 +47,7 @@ secure-dcm/
 ├── requirements.txt         # Dependencies
 ├── README.md
 └── main.py                 # Entry point
-```
+````
 
 ## Prerequisites
 
@@ -59,6 +58,7 @@ secure-dcm/
 ## Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd secure-dcm
@@ -67,18 +67,21 @@ cd secure-dcm
 2. Create and activate a virtual environment:
 
 Windows:
+
 ```bash
 python -m venv venv
 venv\Scripts\activate
 ```
 
 Linux/Mac:
+
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
 3. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -86,6 +89,7 @@ pip install -r requirements.txt
 ## Initial Setup
 
 The system will automatically create these directories on first run:
+
 - `secure_storage/` - For encrypted files
 - `audit.log` - For system logs
 - `secure_dcm.db` - SQLite database
@@ -95,6 +99,7 @@ The system will automatically create these directories on first run:
 ### Basic Commands
 
 1. **Start by logging in**:
+
 ```bash
 python main.py login
 # Use credentials:
@@ -103,17 +108,21 @@ python main.py login
 ```
 
 2. **Upload a file**:
+
 ```bash
 python main.py upload path/to/file.txt --name "My File" --type lyrics
 ```
+
 Supported types: `lyrics`, `score`, `audio`
 
 3. **Download a file**:
+
 ```bash
 python main.py download <artifact_id> output_file.txt
 ```
 
 4. **List all artifacts**:
+
 ```bash
 python main.py list
 ```
@@ -121,6 +130,7 @@ python main.py list
 ### Command Details
 
 #### Upload Command
+
 ```bash
 python main.py upload [OPTIONS] FILE
 Options:
@@ -129,16 +139,19 @@ Options:
 ```
 
 Example:
+
 ```bash
 python main.py upload lyrics.txt --name "Song Lyrics" --type lyrics
 ```
 
 #### Download Command
+
 ```bash
 python main.py download ARTIFACT_ID OUTPUT_PATH
 ```
 
 Example:
+
 ```bash
 python main.py download abc123xyz downloaded_lyrics.txt
 ```
@@ -148,10 +161,12 @@ python main.py download abc123xyz downloaded_lyrics.txt
 The system implements three user roles:
 
 1. **Admin**
+
    - Full access to all operations
    - Can create, read, update, and delete any artifact
 
 2. **Owner**
+
    - Can manage their own artifacts
    - Can read, update, and delete owned artifacts
    - Cannot access others' artifacts
@@ -164,16 +179,19 @@ The system implements three user roles:
 ## Security Features
 
 ### Encryption
+
 - AES-256 encryption for all stored content
 - Secure key management
 - Encrypted file storage
 
 ### Authentication
+
 - JWT-based token authentication
 - Secure password handling
 - Session management
 
 ### File Integrity
+
 - SHA-256 checksum verification
 - Automatic validation on file operations
 - Tamper detection
@@ -188,6 +206,7 @@ The system maintains comprehensive audit logs in `audit.log`:
 - System errors
 
 View logs:
+
 ```bash
 # Last 10 entries
 tail -n 10 audit.log
@@ -201,15 +220,17 @@ tail -f audit.log
 ### Common Issues
 
 1. **Import Errors**
+
    ```bash
    # Windows (PowerShell)
    $env:PYTHONPATH = "path\to\secure-dcm"
-   
+
    # Linux/Mac
    export PYTHONPATH=/path/to/secure-dcm
    ```
 
 2. **Permission Denied**
+
    - Verify login status
    - Check file permissions
    - Ensure database is writable
@@ -222,10 +243,12 @@ tail -f audit.log
 ### Error Messages
 
 1. "Please login first"
+
    - Run `python main.py login`
    - Use admin credentials
 
 2. "Failed to create artifact"
+
    - Verify file exists
    - Check file permissions
    - Ensure sufficient storage
@@ -238,6 +261,7 @@ tail -f audit.log
 ## Development
 
 ### Running Tests
+
 ```bash
 # All tests
 python -m unittest discover tests
@@ -247,6 +271,7 @@ python -m unittest tests.test_auth
 ```
 
 ### Security Testing
+
 ```bash
 pip install bandit
 bandit -r src/
@@ -255,12 +280,14 @@ bandit -r src/
 ## Maintenance
 
 ### Regular Tasks
+
 1. Monitor `audit.log`
 2. Backup `secure_storage/`
 3. Check database integrity
 4. Update dependencies
 
 ### Database Maintenance
+
 ```bash
 # Backup
 sqlite3 secure_dcm.db ".backup 'backup.db'"
@@ -276,12 +303,7 @@ Copyright (c) 2024. All rights reserved.
 ## Support
 
 For support:
+
 1. Check troubleshooting section
 2. Review error logs
 3. Create an issue in the repository
-
----
-
-This implementation follows the technical requirements specified in the project design document, implementing secure storage, access control, and audit logging for digital copyright management.
-```
-
