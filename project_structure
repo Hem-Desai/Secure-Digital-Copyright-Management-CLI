@@ -1,0 +1,32 @@
+secure_dcm/
+├── src/
+│   ├── __init__.py
+│   ├── auth/
+│   │   ├── __init__.py
+│   │   ├── jwt_handler.py
+│   │   └── rbac.py
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── storage_interface.py
+│   │   ├── file_storage.py
+│   │   └── db_storage.py
+│   ├── encryption/
+│   │   ├── __init__.py
+│   │   ├── encryption_strategy.py
+│   │   └── aes_handler.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   └── artifact.py
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── logging.py
+│   │   └── checksum.py
+│   └── cli.py
+├── tests/
+│   ├── __init__.py
+│   ├── test_auth.py
+│   ├── test_storage.py
+│   └── test_encryption.py
+├── requirements.txt
+└── README.md 
