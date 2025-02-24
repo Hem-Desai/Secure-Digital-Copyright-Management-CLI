@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from ..models.user import User, UserRole
 import hashlib
 import os
+from datetime import datetime
 
 class Permission(Enum):
     CREATE = "create"
@@ -27,14 +28,31 @@ class RBACManager:
             UserRole.VIEWER: [Permission.READ, Permission.LIST]
         }
         
-        # In production, this would be in a database
+        # Mock users with different roles
+        current_time = datetime.utcnow().timestamp()
         self._users = {
             "admin": User(
-                id="admin",
+                id="admin123",
                 username="admin",
-                password_hash=self._hash_password("admin"),
+                password_hash=self._hash_password("admin123"),
                 role=UserRole.ADMIN,
-                created_at=0,
+                created_at=current_time,
+                artifacts=[]
+            ),
+            "owner": User(
+                id="owner123",
+                username="owner",
+                password_hash=self._hash_password("owner123"),
+                role=UserRole.OWNER,
+                created_at=current_time,
+                artifacts=[]  # Will be populated as they create artifacts
+            ),
+            "viewer": User(
+                id="viewer123",
+                username="viewer",
+                password_hash=self._hash_password("viewer123"),
+                role=UserRole.VIEWER,
+                created_at=current_time,
                 artifacts=[]
             )
         }
@@ -68,4 +86,12 @@ class RBACManager:
             resource_id not in user.artifacts):
             return False
             
-        return True 
+        return True
+
+    def add_artifact_to_owner(self, user: User, artifact_id: str) -> bool:
+        """Add artifact to owner's list of artifacts"""
+        if user.role == UserRole.OWNER:
+            if user.username in self._users:
+                self._users[user.username].artifacts.append(artifact_id)
+                return True
+        return False 

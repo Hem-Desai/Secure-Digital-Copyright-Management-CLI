@@ -58,6 +58,10 @@ class ArtifactService:
                 **artifact.metadata
             })
             
+            # Add artifact to owner's list if user is an owner
+            if user.role == UserRole.OWNER:
+                self.rbac.add_artifact_to_owner(user, artifact_id)
+            
             self.logger.log_event("create_artifact", user.id, 
                                 {"artifact_id": artifact_id})
             return artifact_id

@@ -18,6 +18,14 @@ class CLI:
         
     def login(self) -> bool:
         """Handle user login"""
+        print("\nSecure Digital Copyright Management System")
+        print("----------------------------------------")
+        print("Available roles:")
+        print("1. Admin  (username: admin,  password: admin123)")
+        print("2. Owner  (username: owner,  password: owner123)")
+        print("3. Viewer (username: viewer, password: viewer123)")
+        print("----------------------------------------")
+        
         username = input("Username: ")
         password = getpass.getpass("Password: ")
         
@@ -25,6 +33,7 @@ class CLI:
         if user:
             self.current_user = user
             self.logger.log_auth_attempt(username, True, "127.0.0.1")
+            print(f"\nWelcome {username}! You are logged in as: {user.role.value}")
             return True
             
         self.logger.log_auth_attempt(username, False, "127.0.0.1")
@@ -125,6 +134,19 @@ def list(cli: CLI):
         print(f"Name: {artifact['name']}")
         print(f"Type: {artifact['content_type']}")
         print(f"Created: {artifact['created_at']}")
-        
+
+@main.command()
+@click.pass_obj
+def whoami(cli: CLI):
+    """Show current user information"""
+    cli.require_auth()
+    user = cli.current_user
+    print(f"\nCurrent user information:")
+    print(f"Username: {user.username}")
+    print(f"Role: {user.role.value}")
+    print(f"User ID: {user.id}")
+    if user.role == UserRole.OWNER:
+        print(f"Owned artifacts: {len(user.artifacts)}")
+
 if __name__ == '__main__':
     main() 
