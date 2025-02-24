@@ -1,6 +1,8 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from ..models.user import User, UserRole
+import hashlib
+import os
 
 class Permission(Enum):
     CREATE = "create"
@@ -24,6 +26,29 @@ class RBACManager:
             ],
             UserRole.VIEWER: [Permission.READ, Permission.LIST]
         }
+        
+        # In production, this would be in a database
+        self._users = {
+            "admin": User(
+                id="admin",
+                username="admin",
+                password_hash=self._hash_password("admin"),
+                role=UserRole.ADMIN,
+                created_at=0,
+                artifacts=[]
+            )
+        }
+    
+    def _hash_password(self, password: str) -> str:
+        """Hash password using SHA-256"""
+        return hashlib.sha256(password.encode()).hexdigest()
+    
+    def authenticate(self, username: str, password: str) -> Optional[User]:
+        """Authenticate user credentials"""
+        user = self._users.get(username)
+        if user and user.password_hash == self._hash_password(password):
+            return user
+        return None
     
     def check_permission(self, user: User, permission: Permission, 
                         resource_id: Optional[str] = None) -> bool:

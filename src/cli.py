@@ -6,40 +6,34 @@ from pathlib import Path
 import os
 from src.models.user import User, UserRole
 from src.services.artifact_service import ArtifactService
-from src.auth.jwt_handler import JWTHandler
 from src.utils.logging import AuditLogger
-from src.auth.auth_service import AuthService
+from src.auth.rbac import RBACManager
 
 class CLI:
     def __init__(self):
         self.artifact_service = ArtifactService()
-        self.auth_service = AuthService()
+        self.rbac_manager = RBACManager()
         self.logger = AuditLogger()
         self.current_user: Optional[User] = None
-        self.token: Optional[str] = None
         
     def login(self) -> bool:
         """Handle user login"""
         username = input("Username: ")
         password = getpass.getpass("Password: ")
         
-        success, token = self.auth_service.login(username, password, "127.0.0.1")
-        if success and token:
-            self.token = token
-            self.current_user = self.auth_service.verify_token(token)
+        user = self.rbac_manager.authenticate(username, password)
+        if user:
+            self.current_user = user
+            self.logger.log_auth_attempt(username, True, "127.0.0.1")
             return True
+            
+        self.logger.log_auth_attempt(username, False, "127.0.0.1")
         return False
         
     def require_auth(self):
-        """Decorator to require authentication"""
-        if not self.token or not self.current_user:
+        """Check if user is authenticated"""
+        if not self.current_user:
             print("Please login first")
-            sys.exit(1)
-            
-        # Verify token is still valid
-        user = self.auth_service.verify_token(self.token)
-        if not user:
-            print("Session expired. Please login again")
             sys.exit(1)
 
 @click.group()
