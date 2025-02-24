@@ -277,6 +277,55 @@ pip install bandit
 bandit -r src/
 ```
 
+## Development Setup
+
+### Code Quality Tools
+
+1. Install development dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Install pre-commit hooks:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+3. Run code formatting:
+
+```bash
+# Format code
+black src/
+
+# Check style
+flake8 src/
+
+# Security check
+bandit -r src/
+```
+
+### JWT Authentication
+
+The system uses JWT tokens for authentication. Each token contains:
+
+- User ID
+- Role
+- Expiration time (1 hour)
+
+Example token payload:
+
+```json
+{
+  "user_id": "admin",
+  "role": "admin",
+  "exp": 1679831400,
+  "iat": 1679827800
+}
+```
+
 ## Maintenance
 
 ### Regular Tasks

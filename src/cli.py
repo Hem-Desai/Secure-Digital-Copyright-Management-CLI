@@ -8,37 +8,38 @@ from src.models.user import User, UserRole
 from src.services.artifact_service import ArtifactService
 from src.auth.jwt_handler import JWTHandler
 from src.utils.logging import AuditLogger
+from src.auth.auth_service import AuthService
 
 class CLI:
     def __init__(self):
         self.artifact_service = ArtifactService()
-        self.jwt_handler = JWTHandler()
+        self.auth_service = AuthService()
         self.logger = AuditLogger()
         self.current_user: Optional[User] = None
+        self.token: Optional[str] = None
         
     def login(self) -> bool:
         """Handle user login"""
         username = input("Username: ")
         password = getpass.getpass("Password: ")
         
-        # In a real application, verify credentials against database
-        # For demo, use hardcoded admin user
-        if username == "admin" and password == "admin":
-            self.current_user = User(
-                id="admin",
-                username="admin",
-                password_hash="admin",
-                role=UserRole.ADMIN,
-                created_at=0,
-                artifacts=[]
-            )
+        success, token = self.auth_service.login(username, password, "127.0.0.1")
+        if success and token:
+            self.token = token
+            self.current_user = self.auth_service.verify_token(token)
             return True
         return False
         
     def require_auth(self):
         """Decorator to require authentication"""
-        if not self.current_user:
+        if not self.token or not self.current_user:
             print("Please login first")
+            sys.exit(1)
+            
+        # Verify token is still valid
+        user = self.auth_service.verify_token(self.token)
+        if not user:
+            print("Session expired. Please login again")
             sys.exit(1)
 
 @click.group()
