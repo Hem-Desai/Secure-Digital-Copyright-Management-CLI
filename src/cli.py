@@ -4,39 +4,67 @@ import sys
 from typing import Optional
 from pathlib import Path
 import os
+from datetime import datetime, timedelta
 from src.models.user import User, UserRole
 from src.services.artifact_service import ArtifactService
 from src.utils.logging import AuditLogger
 from src.auth.rbac import RBACManager
+from src.storage.db_storage import SQLiteStorage
 
 class CLI:
     def __init__(self):
         self.artifact_service = ArtifactService()
         self.rbac_manager = RBACManager()
         self.logger = AuditLogger()
+        self.db = SQLiteStorage()
         self.current_user: Optional[User] = None
         
     def login(self) -> bool:
-        """Handle user login"""
+        """Handle user login with rate limiting"""
         print("\nSecure Digital Copyright Management System")
         print("----------------------------------------")
-        print("Available roles:")
-        print("1. Admin  (username: admin,  password: admin123)")
-        print("2. Owner  (username: owner,  password: owner123)")
-        print("3. Viewer (username: viewer, password: viewer123)")
-        print("----------------------------------------")
         
-        username = input("Username: ")
+        username = input("Username: ").strip()
+        if not username:
+            print("Username cannot be empty")
+            return False
+            
+        # Check if user exists and isn't locked
+        user_data = self.db.get_user_by_username(username)
+        if not user_data:
+            print("Invalid username or password")
+            return False
+            
+        # Check for account lockout
+        if user_data.get("account_locked"):
+            print("Account is locked due to too many failed attempts.")
+            print("Please contact your administrator.")
+            return False
+            
+        # Check rate limiting
+        last_attempt = user_data.get("last_login_attempt", 0)
+        if datetime.utcnow().timestamp() - last_attempt < 30:  # 30 second delay between attempts
+            print("Please wait before trying again")
+            return False
+            
         password = getpass.getpass("Password: ")
-        
+        if not password:
+            print("Password cannot be empty")
+            return False
+            
+        # Attempt authentication
         user = self.rbac_manager.authenticate(username, password)
         if user:
             self.current_user = user
+            self.db.update_login_attempt(username, True)
             self.logger.log_auth_attempt(username, True, "127.0.0.1")
             print(f"\nWelcome {username}! You are logged in as: {user.role.value}")
             return True
             
+        # Handle failed login
+        self.db.update_login_attempt(username, False)
         self.logger.log_auth_attempt(username, False, "127.0.0.1")
+        print("Invalid username or password")
         return False
         
     def require_auth(self):
@@ -44,11 +72,42 @@ class CLI:
         if not self.current_user:
             print("Please login first")
             sys.exit(1)
+            
+    def create_user(self, username: str, password: str, role: UserRole) -> bool:
+        """Create a new user with secure password"""
+        self.require_auth()
+        if self.current_user.role != UserRole.ADMIN:
+            print("Only administrators can create new users")
+            return False
+            
+        user = self.rbac_manager.create_user(username, password, role)
+        if not user:
+            print("Failed to create user. Password must meet complexity requirements:")
+            print("- Minimum 8 characters")
+            print("- At least one uppercase letter")
+            print("- At least one lowercase letter")
+            print("- At least one number")
+            print("- At least one special character")
+            return False
+            
+        # Store user in database
+        self.db.create({
+            "table": "users",
+            "id": user.id,
+            "username": user.username,
+            "password_hash": user.password_hash,
+            "role": user.role.value,
+            "created_at": user.created_at,
+            "password_last_changed": datetime.utcnow().timestamp()
+        })
+        
+        print(f"User {username} created successfully with role {role.value}")
+        return True
 
 @click.group()
 @click.pass_context
 def main(ctx):
-    """Secure Digital Copyright Management CLI"""
+    """Secure Digital Copyright Management System"""
     ctx.obj = CLI()
 
 @main.command()
@@ -58,7 +117,24 @@ def login(cli: CLI):
     if cli.login():
         print("Login successful")
     else:
-        print("Login failed")
+        sys.exit(1)
+
+@main.command()
+@click.argument("username")
+@click.argument("role", type=click.Choice(["admin", "owner", "viewer"]))
+@click.pass_obj
+def create_user(cli: CLI, username: str, role: str):
+    """Create a new user (admin only)"""
+    cli.require_auth()
+    password = getpass.getpass("Enter password for new user: ")
+    confirm = getpass.getpass("Confirm password: ")
+    
+    if password != confirm:
+        print("Passwords do not match")
+        sys.exit(1)
+        
+    role_enum = UserRole(role.lower())
+    if not cli.create_user(username, password, role_enum):
         sys.exit(1)
 
 @main.command()
@@ -146,7 +222,8 @@ def whoami(cli: CLI):
     print(f"Role: {user.role.value}")
     print(f"User ID: {user.id}")
     if user.role == UserRole.OWNER:
-        print(f"Owned artifacts: {len(user.artifacts)}")
+        artifacts = cli.db.get_user_artifacts(user.id)
+        print(f"Owned artifacts: {len(artifacts)}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

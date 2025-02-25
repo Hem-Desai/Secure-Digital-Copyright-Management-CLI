@@ -1,8 +1,8 @@
+import bcrypt
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 from ..models.user import User, UserRole
-import hashlib
-import os
+import re
 from datetime import datetime
 
 class Permission(Enum):
@@ -28,44 +28,69 @@ class RBACManager:
             UserRole.VIEWER: [Permission.READ, Permission.LIST]
         }
         
-        # Mock users with different roles
-        current_time = datetime.utcnow().timestamp()
-        self._users = {
-            "admin": User(
-                id="admin123",
-                username="admin",
-                password_hash=self._hash_password("admin123"),
-                role=UserRole.ADMIN,
-                created_at=current_time,
-                artifacts=[]
-            ),
-            "owner": User(
-                id="owner123",
-                username="owner",
-                password_hash=self._hash_password("owner123"),
-                role=UserRole.OWNER,
-                created_at=current_time,
-                artifacts=[]  # Will be populated as they create artifacts
-            ),
-            "viewer": User(
-                id="viewer123",
-                username="viewer",
-                password_hash=self._hash_password("viewer123"),
-                role=UserRole.VIEWER,
-                created_at=current_time,
-                artifacts=[]
-            )
-        }
+        # Initialize empty users dict - will be populated from database
+        self._users = {}
+        
+    def _validate_password(self, password: str) -> bool:
+        """
+        Validate password complexity requirements:
+        - Minimum 8 characters
+        - At least one uppercase letter
+        - At least one lowercase letter
+        - At least one number
+        - At least one special character
+        """
+        if len(password) < 8:
+            return False
+        if not re.search(r"[A-Z]", password):
+            return False
+        if not re.search(r"[a-z]", password):
+            return False
+        if not re.search(r"\d", password):
+            return False
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+            return False
+        return True
     
-    def _hash_password(self, password: str) -> str:
-        """Hash password using SHA-256"""
-        return hashlib.sha256(password.encode()).hexdigest()
+    def _hash_password(self, password: str) -> bytes:
+        """Hash password using bcrypt with salt"""
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode(), salt)
+    
+    def create_user(self, username: str, password: str, role: UserRole) -> Optional[User]:
+        """Create a new user with secure password"""
+        if not self._validate_password(password):
+            return None
+            
+        if username in self._users:
+            return None
+            
+        user_id = f"{username}_{datetime.utcnow().timestamp()}"
+        password_hash = self._hash_password(password)
+        
+        user = User(
+            id=user_id,
+            username=username,
+            password_hash=password_hash,
+            role=role,
+            created_at=datetime.utcnow().timestamp(),
+            artifacts=[]
+        )
+        
+        self._users[username] = user
+        return user
     
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """Authenticate user credentials"""
+        """Authenticate user credentials using bcrypt"""
         user = self._users.get(username)
-        if user and user.password_hash == self._hash_password(password):
-            return user
+        if not user:
+            return None
+            
+        try:
+            if bcrypt.checkpw(password.encode(), user.password_hash):
+                return user
+        except Exception:
+            pass
         return None
     
     def check_permission(self, user: User, permission: Permission, 
