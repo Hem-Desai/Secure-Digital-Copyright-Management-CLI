@@ -1,5 +1,23 @@
-click==8.0.3
-cryptography==36.0.1
-flake8==4.0.1
-black==22.3.0
-bandit==1.7.5 
+# Core dependencies
+click>=8.0.3
+bcrypt>=4.0.1
+cryptography>=36.0.1
+PyJWT>=2.4.0
+pathlib>=1.0.1
+
+# Development and testing
+pytest>=7.0.0
+pytest-cov>=3.0.0  # For test coverage
+black>=22.3.0
+flake8>=4.0.1
+bandit>=1.7.5
+pre-commit>=2.17.0
+
+# Type checking
+mypy>=0.950
+types-PyJWT>=0.1.0
+types-cryptography>=0.1.0
+
+# Security
+python-dotenv>=0.19.0  # For environment variables
+pycryptodome>=3.15.0  # Additional cryptographic functions 
