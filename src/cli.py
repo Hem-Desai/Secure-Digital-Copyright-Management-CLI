@@ -141,16 +141,27 @@ def create_user(cli: CLI, username: str, role: str):
 @click.argument('file', type=click.Path(exists=True))
 @click.option('--name', prompt=True)
 @click.option('--type', 'content_type', prompt=True, 
-              type=click.Choice(['lyrics', 'score', 'audio']))
+              type=click.Choice(['lyrics', 'score', 'audio', 'video']))
 @click.pass_obj
 def upload(cli: CLI, file: str, name: str, content_type: str):
-    """Upload a new artifact"""
+    """Upload a new artifact with encryption"""
     cli.require_auth()
     
     try:
+        print("\nProcessing upload request...")
+        print("1. Authenticating and checking permissions...")
+        
+        # File size check
+        file_size = os.path.getsize(file)
+        if file_size > 100 * 1024 * 1024:  # 100MB limit
+            print("Error: File size exceeds 100MB limit")
+            sys.exit(1)
+            
+        print("2. Reading and preparing file data...")
         with open(file, 'rb') as f:
             content = f.read()
             
+        print("3. Encrypting and storing file...")
         artifact_id = cli.artifact_service.create_artifact(
             cli.current_user,
             name,
@@ -159,13 +170,18 @@ def upload(cli: CLI, file: str, name: str, content_type: str):
         )
         
         if artifact_id:
-            print(f"Artifact created with ID: {artifact_id}")
+            print("4. Finalizing upload...")
+            print(f"\nSuccess! Artifact created with ID: {artifact_id}")
+            print(f"Type: {content_type}")
+            print(f"Size: {file_size / 1024:.1f} KB")
+            print("\nUse this ID to download the file later.")
         else:
-            print("Failed to create artifact")
+            print("\nError: Failed to create artifact")
+            print("Please check your permissions and try again.")
             sys.exit(1)
             
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
 @main.command()
@@ -173,25 +189,35 @@ def upload(cli: CLI, file: str, name: str, content_type: str):
 @click.argument('output', type=click.Path())
 @click.pass_obj
 def download(cli: CLI, artifact_id: str, output: str):
-    """Download an artifact"""
+    """Download and decrypt an artifact"""
     cli.require_auth()
     
     try:
+        print("\nProcessing download request...")
+        print("1. Authenticating and checking permissions...")
+        
+        print("2. Retrieving encrypted file...")
         content = cli.artifact_service.read_artifact(
             cli.current_user,
             artifact_id
         )
         
         if content:
+            print("3. Decrypting and verifying file...")
             with open(output, 'wb') as f:
                 f.write(content)
-            print(f"Artifact saved to: {output}")
+                
+            print("4. Saving file...")
+            file_size = len(content) / 1024  # KB
+            print(f"\nSuccess! File saved to: {output}")
+            print(f"Size: {file_size:.1f} KB")
         else:
-            print("Failed to read artifact")
+            print("\nError: Failed to read artifact")
+            print("Please check your permissions and artifact ID.")
             sys.exit(1)
             
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
 @main.command()
@@ -200,16 +226,22 @@ def list(cli: CLI):
     """List available artifacts"""
     cli.require_auth()
     
+    print("\nRetrieving artifact list...")
     artifacts = cli.artifact_service.list_artifacts(cli.current_user)
+    
     if not artifacts:
         print("No artifacts found")
         return
         
+    print(f"\nFound {len(artifacts)} artifact(s):")
     for artifact in artifacts:
         print(f"\nID: {artifact['id']}")
         print(f"Name: {artifact['name']}")
         print(f"Type: {artifact['content_type']}")
         print(f"Created: {artifact['created_at']}")
+        if cli.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+            print(f"Owner ID: {artifact['owner_id']}")
+            print(f"Checksum: {artifact['checksum']}")
 
 @main.command()
 @click.pass_obj
@@ -224,6 +256,10 @@ def whoami(cli: CLI):
     if user.role == UserRole.OWNER:
         artifacts = cli.db.get_user_artifacts(user.id)
         print(f"Owned artifacts: {len(artifacts)}")
+        if artifacts:
+            print("\nOwned artifact IDs:")
+            for artifact_id in artifacts:
+                print(f"- {artifact_id}")
 
 if __name__ == "__main__":
     main() 

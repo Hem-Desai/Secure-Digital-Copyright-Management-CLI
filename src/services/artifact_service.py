@@ -10,178 +10,177 @@ from ..encryption.aes_handler import AESHandler
 from ..utils.checksum import generate_checksum
 from ..utils.logging import AuditLogger
 from ..auth.rbac import RBACManager, Permission
+from .secure_enclave_service import SecureEnclaveService
 
 class ArtifactService:
     def __init__(self):
-        self.db = SQLiteStorage()
-        self.file_storage = FileStorage()
-        self.encryption = AESHandler()
-        self.rbac = RBACManager()
-        self.logger = AuditLogger()
+        self.secure_enclave = SecureEnclaveService()
         
     def create_artifact(self, user: User, name: str, 
                        content_type: str, content: bytes) -> Optional[str]:
-        """Create a new artifact"""
-        if not self.rbac.check_permission(user, Permission.CREATE):
-            self.logger.log_event("create_artifact", user.id, 
-                                {"status": "denied"}, "failure")
-            return None
-            
-        try:
-            # Generate IDs and encrypt content
-            artifact_id = str(uuid.uuid4())
-            key_id, _ = self.encryption.generate_key()
-            encrypted_content = self.encryption.encrypt(content, key_id)
-            
-            # Calculate checksum of original content
-            checksum = generate_checksum(content)
-            
-            # Create artifact record
-            now = datetime.utcnow().timestamp()
-            artifact = Artifact(
-                id=artifact_id,
-                name=name,
-                content_type=content_type,
-                owner_id=user.id,
-                created_at=now,
-                modified_at=now,
-                checksum=checksum,
-                encrypted_content=encrypted_content,
-                encryption_key_id=key_id
-            )
-            
-            # Save to storage
-            self.file_storage.save_file(artifact_id, encrypted_content)
-            self.db.create({
-                "table": "artifacts",
-                "id": artifact_id,
-                **artifact.metadata
-            })
-            
-            # Add artifact to owner's list if user is an owner
-            if user.role == UserRole.OWNER:
-                self.rbac.add_artifact_to_owner(user, artifact_id)
-            
-            self.logger.log_event("create_artifact", user.id, 
-                                {"artifact_id": artifact_id})
-            return artifact_id
-            
-        except Exception as e:
-            self.logger.log_event("create_artifact", user.id,
-                                {"error": str(e)}, "failure")
-            return None
-            
+        """Create a new artifact using secure enclave"""
+        metadata = {
+            "name": name,
+            "content_type": content_type
+        }
+        return self.secure_enclave.handle_upload_request(user, content, metadata)
+        
     def read_artifact(self, user: User, artifact_id: str) -> Optional[bytes]:
-        """Read an artifact's content"""
-        if not self.rbac.check_permission(user, Permission.READ, artifact_id):
-            self.logger.log_event("read_artifact", user.id,
-                                {"artifact_id": artifact_id}, "denied")
-            return None
-            
-        try:
-            # Get artifact metadata
-            artifact_data = self.db.read(artifact_id, "artifacts")
-            if not artifact_data:
-                return None
-                
-            # Read and decrypt content
-            encrypted_content = self.file_storage.read_file(artifact_id)
-            if not encrypted_content:
-                return None
-                
-            content = self.encryption.decrypt(
-                encrypted_content,
-                artifact_data["encryption_key_id"]
-            )
-            
-            self.logger.log_event("read_artifact", user.id,
-                                {"artifact_id": artifact_id})
-            return content
-            
-        except Exception as e:
-            self.logger.log_event("read_artifact", user.id,
-                                {"error": str(e)}, "failure")
-            return None
-            
+        """Read an artifact's content using secure enclave"""
+        return self.secure_enclave.handle_download_request(user, artifact_id)
+        
     def update_artifact(self, user: User, artifact_id: str, 
                        content: bytes) -> bool:
-        """Update an artifact's content"""
-        if not self.rbac.check_permission(user, Permission.UPDATE, artifact_id):
-            self.logger.log_event("update_artifact", user.id,
-                                {"artifact_id": artifact_id}, "denied")
-            return False
-            
+        """Update an artifact's content securely"""
         try:
-            # Get existing artifact
-            artifact_data = self.db.read(artifact_id, "artifacts")
-            if not artifact_data:
+            # First verify permissions
+            if not self.secure_enclave._confirm_authorization(
+                user, Permission.UPDATE, artifact_id
+            ):
                 return False
                 
-            # Generate new encryption key and encrypt content
-            key_id, _ = self.encryption.generate_key()
-            encrypted_content = self.encryption.encrypt(content, key_id)
-            checksum = generate_checksum(content)
+            # Get existing artifact to preserve metadata
+            artifact = self.secure_enclave.db.read(artifact_id, "artifacts")
+            if not artifact:
+                return False
+                
+            # Create new version with updated content
+            metadata = {
+                "name": artifact["name"],
+                "content_type": artifact["content_type"]
+            }
             
-            # Update storage
-            self.file_storage.save_file(artifact_id, encrypted_content)
-            success = self.db.update(artifact_id, {
+            # Upload new version
+            new_artifact_id = self.secure_enclave.handle_upload_request(
+                user, content, metadata
+            )
+            
+            if not new_artifact_id:
+                return False
+                
+            # Delete old version securely
+            old_file_id = artifact_id
+            if not self.secure_enclave.file_storage.delete_file(old_file_id):
+                # Rollback if old version deletion fails
+                self.secure_enclave.file_storage.delete_file(new_artifact_id)
+                return False
+                
+            # Update database record
+            success = self.secure_enclave.db.update(artifact_id, {
                 "table": "artifacts",
                 "modified_at": datetime.utcnow().timestamp(),
-                "checksum": checksum,
-                "encryption_key_id": key_id
+                "encrypted_content": content,
+                "checksum": self.secure_enclave.generate_checksum(content),
+                "file_size": len(content)
             })
             
-            if success:
-                self.logger.log_event("update_artifact", user.id,
-                                    {"artifact_id": artifact_id})
-            return success
+            if not success:
+                # Rollback on database update failure
+                self.secure_enclave.file_storage.delete_file(new_artifact_id)
+                return False
+                
+            return True
             
         except Exception as e:
-            self.logger.log_event("update_artifact", user.id,
-                                {"error": str(e)}, "failure")
+            self.secure_enclave.logger.log_event(
+                "update_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "error": str(e)
+                },
+                "failure"
+            )
             return False
             
     def delete_artifact(self, user: User, artifact_id: str) -> bool:
-        """Delete an artifact"""
-        if not self.rbac.check_permission(user, Permission.DELETE, artifact_id):
-            self.logger.log_event("delete_artifact", user.id,
-                                {"artifact_id": artifact_id}, "denied")
-            return False
-            
+        """Delete an artifact securely"""
         try:
-            # Delete from both storages
-            self.file_storage.delete_file(artifact_id)
-            success = self.db.delete(artifact_id, "artifacts")
+            # Verify permissions
+            if not self.secure_enclave._confirm_authorization(
+                user, Permission.DELETE, artifact_id
+            ):
+                return False
+                
+            # Get artifact to verify existence
+            artifact = self.secure_enclave.db.read(artifact_id, "artifacts")
+            if not artifact:
+                return False
+                
+            # Delete file first
+            if not self.secure_enclave.file_storage.delete_file(artifact_id):
+                return False
+                
+            # Delete database record
+            if not self.secure_enclave.db.delete(artifact_id, "artifacts"):
+                return False
+                
+            # Remove from owner's artifacts if applicable
+            if user.role == UserRole.OWNER:
+                self.secure_enclave.rbac.remove_artifact_from_owner(
+                    user, artifact_id
+                )
+                
+            # Log successful deletion
+            self.secure_enclave.logger.log_event(
+                "delete_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "content_type": artifact["content_type"]
+                }
+            )
             
-            if success:
-                self.logger.log_event("delete_artifact", user.id,
-                                    {"artifact_id": artifact_id})
-            return success
+            return True
             
         except Exception as e:
-            self.logger.log_event("delete_artifact", user.id,
-                                {"error": str(e)}, "failure")
+            self.secure_enclave.logger.log_event(
+                "delete_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "error": str(e)
+                },
+                "failure"
+            )
             return False
             
     def list_artifacts(self, user: User) -> List[Dict[str, Any]]:
         """List all artifacts user has access to"""
-        if not self.rbac.check_permission(user, Permission.LIST):
-            self.logger.log_event("list_artifacts", user.id,
-                                {"status": "denied"}, "failure")
+        if not self.secure_enclave.rbac.check_permission(user, Permission.LIST):
+            self.secure_enclave.logger.log_event(
+                "list_artifacts", 
+                user.id,
+                {"status": "denied"}, 
+                "failure"
+            )
             return []
             
         try:
-            artifacts = self.db.list("artifacts")
+            artifacts = self.secure_enclave.db.list("artifacts")
             
             # Filter based on user role
             if user.role == UserRole.OWNER:
                 artifacts = [a for a in artifacts if a["owner_id"] == user.id]
                 
-            self.logger.log_event("list_artifacts", user.id,
-                                {"count": len(artifacts)})
+            # Remove sensitive information for non-admin users
+            if user.role != UserRole.ADMIN:
+                for artifact in artifacts:
+                    artifact.pop("encryption_key_id", None)
+                    artifact.pop("encrypted_content", None)
+                
+            self.secure_enclave.logger.log_event(
+                "list_artifacts", 
+                user.id,
+                {"count": len(artifacts)}
+            )
             return artifacts
             
         except Exception as e:
-            self.logger.log_event("list_artifacts", user.id,
-                                {"error": str(e)}, "failure")
+            self.secure_enclave.logger.log_event(
+                "list_artifacts", 
+                user.id,
+                {"error": str(e)}, 
+                "failure"
+            )
             return [] 
