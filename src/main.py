@@ -15,8 +15,9 @@ class DCMSystem:
         self.db = SQLiteStorage()
         self.rbac = RBACManager()
         self.secure_enclave = SecureEnclaveService()
-        self.current_user: Optional[User] = None
-        self._load_session()
+        self.current_user = None
+        # Clear any existing session on startup
+        self._clear_session()
 
     def _load_session(self):
         """Load user session if exists"""
