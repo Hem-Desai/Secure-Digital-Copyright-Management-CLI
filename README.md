@@ -58,56 +58,97 @@ pip install -r requirements.txt
 python -m src.init_db
 ```
 
+## Default Users
+
+The system comes with three default users:
+
+1. Admin User
+
+   - Username: admin
+   - Password: Admin123!
+   - Full system access
+
+2. Owner User
+
+   - Username: owner
+   - Password: Owner123!
+   - Can manage own artifacts
+
+3. Viewer User
+   - Username: viewer
+   - Password: Viewer123!
+   - Read-only access
+
 ## Usage
 
-1. Start by logging in:
+Run the application:
 
 ```bash
-python -m src.cli login USERNAME
+python -m src.main
 ```
 
-2. Available commands:
+### Main Menu
 
-- Create new user (admin only):
+When you start the application, you'll see:
 
-```bash
-python -m src.cli create-user USERNAME ROLE
-# ROLE can be: admin, owner, or viewer
+```
+Digital Copyright Management System
+==================================
+1. Create new account
+2. Login
+3. Exit
 ```
 
-- Upload media file:
+### User Menu
 
-```bash
-python -m src.cli upload FILE --name NAME --type TYPE
-# Examples:
-python -m src.cli upload song.mp3 --name "My Song" --type audio/mp3
-python -m src.cli upload video.mp4 --name "Music Video" --type video/mp4
-python -m src.cli upload lyrics.txt --name "Song Lyrics" --type lyrics
+After logging in, you'll see options based on your role:
+
+```
+Welcome [username]!
+1. Upload artifact
+2. Download artifact
+3. List artifacts
+4. Show my info
+5. Create user (Admin only)
+6. Delete artifact (Admin/Owner only)
+7. Logout
+8. Exit
 ```
 
-- Download artifact:
+### Artifact Management
 
-```bash
-python -m src.cli download ARTIFACT_ID OUTPUT_PATH
+1. **Upload Artifact**
+
+   - Select from supported file types
+   - Automatic ID generation
+   - File size validation
+   - Content type detection
+
+2. **List Artifacts**
+   Shows a formatted table with:
+
+```
+===============================================================
+| ID                 | Name          | Type       | Size (bytes) |
+===============================================================
+| 123e4567-e89b-12d3| My Song       | audio/mp3  | 1048576     |
+| 987fcdeb-51a2-3c4d| Lyrics Doc    | lyrics     | 2048        |
+===============================================================
+Total artifacts: 2
 ```
 
-- List artifacts:
+Admin users see additional owner information.
 
-```bash
-python -m src.cli list
-```
+3. **Download Artifact**
 
-- Show current user info:
+   - Secure decryption
+   - Integrity verification
+   - Permission validation
 
-```bash
-python -m src.cli whoami
-```
-
-- Logout:
-
-```bash
-python -m src.cli logout
-```
+4. **Delete Artifact**
+   - Available to Admin and Owner roles
+   - Permission checks
+   - Secure cleanup
 
 ## Security Best Practices
 
@@ -231,6 +272,13 @@ The system provides comprehensive error handling:
    - Permission denied
    - Rate limiting
    - Account lockout
+
+## Artifact IDs
+
+- Automatically generated using UUID v4
+- Guaranteed uniqueness across the system
+- Used for all artifact operations (download, delete, etc.)
+- Shown in the artifact listing table
 
 ## License
 
