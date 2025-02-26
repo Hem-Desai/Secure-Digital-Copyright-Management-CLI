@@ -45,6 +45,8 @@ class CLI:
                                 failed_login_attempts=user_data.get("failed_login_attempts", 0),
                                 last_login_attempt=user_data.get("last_login_attempt", 0)
                             )
+                        else:
+                            self.current_user = None
         except Exception as e:
             print(f"Error loading session: {str(e)}")
             
@@ -199,6 +201,231 @@ class CLI:
         else:
             print("No user is currently logged in")
 
+    def show_main_menu(self):
+        """Display main menu and handle user input"""
+        while True:
+            print("\nDigital Copyright Management System")
+            print("==================================")
+            if not self.current_user:
+                print("1. Create new account")
+                print("2. Login")
+                print("3. Exit")
+                try:
+                    choice = input("Enter your choice (1-3): ")
+                    if choice == "1":
+                        self.create_user_menu()
+                    elif choice == "2":
+                        self.login_menu()
+                    elif choice == "3":
+                        print("Goodbye!")
+                        break
+                    else:
+                        print("Invalid choice. Please try again.")
+                except Exception as e:
+                    print(f"Error: {e}")
+            else:
+                self.show_user_menu()
+
+    def show_user_menu(self):
+        """Display user menu based on role"""
+        while True:
+            print(f"\nWelcome {self.current_user.username}!")
+            print("1. Upload artifact")
+            print("2. Download artifact")
+            print("3. List artifacts")
+            print("4. Show my info")
+            if self.current_user.role == UserRole.ADMIN:
+                print("5. Create user")
+            if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+                print("6. Delete artifact")
+            print("7. Logout")
+            print("8. Exit")
+
+            try:
+                max_choice = 8
+                choice = input(f"Enter your choice (1-{max_choice}): ")
+                
+                if choice == "1":
+                    self.upload_menu()
+                elif choice == "2":
+                    self.download_menu()
+                elif choice == "3":
+                    self.list_artifacts()
+                elif choice == "4":
+                    self.show_user_info()
+                elif choice == "5" and self.current_user.role == UserRole.ADMIN:
+                    self.create_user_menu()
+                elif choice == "6" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+                    self.delete_artifact_menu()
+                elif choice == "7":
+                    self.logout()
+                    break
+                elif choice == "8":
+                    print("Goodbye!")
+                    return False
+                else:
+                    print("Invalid choice. Please try again.")
+            except Exception as e:
+                print(f"Error: {e}")
+
+    def create_user_menu(self):
+        """Handle user creation interactively"""
+        print("\nCreate New User")
+        print("==============")
+        username = input("Enter username: ")
+        password = input("Enter password: ")
+        
+        if self.current_user and self.current_user.role == UserRole.ADMIN:
+            print("\nSelect role:")
+            print("1. Admin")
+            print("2. Owner")
+            print("3. Viewer")
+            role_choice = input("Enter role (1-3): ")
+            role_map = {"1": UserRole.ADMIN, "2": UserRole.OWNER, "3": UserRole.VIEWER}
+            role = role_map.get(role_choice)
+        else:
+            role = UserRole.OWNER
+
+        if not role:
+            print("Invalid role selected.")
+            return
+
+        if self.create_user(username, password, role):
+            print(f"User {username} created successfully!")
+        else:
+            print("Failed to create user. Please check requirements and try again.")
+
+    def login_menu(self):
+        """Handle login interactively"""
+        print("\nUser Login")
+        print("==========")
+        username = input("Enter username: ")
+        password = input("Enter password: ")
+        
+        if self.login_with_credentials(username, password):
+            print(f"Welcome {username}!")
+        else:
+            print("Login failed. Please check your credentials.")
+
+    def upload_menu(self):
+        """Handle artifact upload interactively"""
+        print("\nUpload Artifact")
+        print("==============")
+        file_path = input("Enter file path: ")
+        name = input("Enter artifact name: ")
+        
+        print("\nSelect content type:")
+        print("1. Lyrics")
+        print("2. Musical Score")
+        print("3. Audio (MP3)")
+        print("4. Audio (WAV)")
+        print("5. Video (MP4)")
+        print("6. Video (AVI)")
+        print("7. Document")
+        
+        type_map = {
+            "1": ContentType.LYRICS,
+            "2": ContentType.SCORE,
+            "3": ContentType.AUDIO_MP3,
+            "4": ContentType.AUDIO_WAV,
+            "5": ContentType.VIDEO_MP4,
+            "6": ContentType.VIDEO_AVI,
+            "7": ContentType.DOCUMENT
+        }
+        
+        type_choice = input("Enter content type (1-7): ")
+        content_type = type_map.get(type_choice)
+        
+        if not content_type:
+            print("Invalid content type selected.")
+            return
+
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+                file_size = len(content)
+                
+            artifact_id = self.secure_enclave.handle_upload_request(
+                user=self.current_user,
+                file_path=file_path,
+                name=name,
+                content_type=content_type.value,
+                file_size=file_size
+            )
+            
+            if artifact_id:
+                print(f"Artifact uploaded successfully! ID: {artifact_id}")
+            else:
+                print("Failed to upload artifact.")
+        except FileNotFoundError:
+            print("File not found. Please check the path and try again.")
+        except Exception as e:
+            print(f"Error uploading file: {e}")
+
+    def download_menu(self):
+        """Handle artifact download interactively"""
+        print("\nDownload Artifact")
+        print("================")
+        artifact_id = input("Enter artifact ID: ")
+        output_path = input("Enter output path: ")
+        
+        content = self.secure_enclave.read_artifact(self.current_user, artifact_id)
+        if content:
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(content)
+                print(f"Artifact downloaded successfully to {output_path}")
+            except Exception as e:
+                print(f"Error saving file: {e}")
+        else:
+            print("Failed to download artifact. Check permissions and artifact ID.")
+
+    def delete_artifact_menu(self):
+        """Handle artifact deletion interactively"""
+        print("\nDelete Artifact")
+        print("==============")
+        artifact_id = input("Enter artifact ID: ")
+        
+        if self.secure_enclave.delete_artifact(self.current_user, artifact_id):
+            print("Artifact deleted successfully!")
+        else:
+            print("Failed to delete artifact. Check permissions and artifact ID.")
+
+    def show_user_info(self):
+        """Display current user information"""
+        if not self.current_user:
+            print("No user logged in.")
+            return
+            
+        print("\nUser Information")
+        print("===============")
+        print(f"Username: {self.current_user.username}")
+        print(f"Role: {self.current_user.role.value}")
+        if self.current_user.role == UserRole.OWNER:
+            print(f"Owned artifacts: {len(self.current_user.artifacts)}")
+
+    def list_artifacts(self):
+        """List available artifacts"""
+        if not self.current_user:
+            print("Please login first.")
+            return
+            
+        print("\nAvailable Artifacts")
+        print("==================")
+        artifacts = self.secure_enclave.list_artifacts(self.current_user)
+        if not artifacts:
+            print("No artifacts found.")
+            return
+            
+        for artifact in artifacts:
+            print(f"\nID: {artifact['id']}")
+            print(f"Name: {artifact['name']}")
+            print(f"Type: {artifact['content_type']}")
+            print(f"Size: {artifact['file_size']} bytes")
+            print(f"Created: {artifact['created_at']}")
+            if self.current_user.role == UserRole.ADMIN:
+                print(f"Owner: {artifact['owner_id']}")
+
 @click.group()
 @click.pass_context
 def main(ctx):
@@ -334,7 +561,7 @@ def download(cli: CLI, artifact_id: str, output: str):
         print("1. Authenticating and checking permissions...")
         
         print("2. Retrieving encrypted file...")
-        content = cli.artifact_service.read_artifact(
+        content = cli.secure_enclave.read_artifact(
             cli.current_user,
             artifact_id
         )
@@ -364,7 +591,7 @@ def list(cli: CLI):
     cli.require_auth()
     
     print("\nRetrieving artifact list...")
-    artifacts = cli.artifact_service.list_artifacts(cli.current_user)
+    artifacts = cli.secure_enclave.list_artifacts(cli.current_user)
     
     if not artifacts:
         print("No artifacts found")
