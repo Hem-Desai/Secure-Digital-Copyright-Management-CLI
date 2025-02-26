@@ -2,7 +2,7 @@ import sqlite3
 from typing import Any, List, Optional, Dict
 import json
 from .storage_interface import StorageInterface
-import datetime
+from datetime import datetime
 
 class SQLiteStorage(StorageInterface):
     def __init__(self, db_path: str = "secure_dcm.db"):
@@ -11,67 +11,96 @@ class SQLiteStorage(StorageInterface):
         
     def _init_db(self):
         """Initialize database tables"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Enable foreign key support
-            conn.execute("PRAGMA foreign_keys = ON")
-            
-            # Create artifacts table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS artifacts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    content_type TEXT NOT NULL,
-                    owner_id TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    modified_at REAL NOT NULL,
-                    checksum TEXT NOT NULL,
-                    encrypted_content BLOB NOT NULL,
-                    encryption_key_id TEXT NOT NULL,
-                    FOREIGN KEY(owner_id) REFERENCES users(id)
-                )
-            """)
-            
-            # Create users table with security fields
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash BLOB NOT NULL,
-                    role TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    failed_login_attempts INTEGER DEFAULT 0,
-                    last_login_attempt REAL DEFAULT 0,
-                    account_locked BOOLEAN DEFAULT 0,
-                    password_last_changed REAL NOT NULL,
-                    UNIQUE(username)
-                )
-            """)
-            
-            # Create user_artifacts table for many-to-many relationship
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS user_artifacts (
-                    user_id TEXT NOT NULL,
-                    artifact_id TEXT NOT NULL,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(artifact_id) REFERENCES artifacts(id),
-                    PRIMARY KEY(user_id, artifact_id)
-                )
-            """)
+        try:
+            print(f"Initializing database at {self.db_path}")
+            with sqlite3.connect(self.db_path) as conn:
+                # Enable foreign key support
+                conn.execute("PRAGMA foreign_keys = ON")
+                print("Enabled foreign key support")
+                
+                # Create artifacts table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS artifacts (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        content_type TEXT NOT NULL,
+                        owner_id TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        modified_at REAL NOT NULL,
+                        checksum TEXT NOT NULL,
+                        encrypted_content BLOB NOT NULL,
+                        encryption_key_id TEXT NOT NULL,
+                        file_size INTEGER NOT NULL,
+                        FOREIGN KEY(owner_id) REFERENCES users(id)
+                    )
+                """)
+                print("Created artifacts table")
+                
+                # Create users table with security fields
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash BLOB NOT NULL,
+                        role TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        failed_login_attempts INTEGER DEFAULT 0,
+                        last_login_attempt REAL DEFAULT 0,
+                        account_locked BOOLEAN DEFAULT 0,
+                        password_last_changed REAL NOT NULL,
+                        UNIQUE(username)
+                    )
+                """)
+                print("Created users table")
+                
+                # Create user_artifacts table for many-to-many relationship
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS user_artifacts (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        artifact_id TEXT NOT NULL,
+                        FOREIGN KEY(user_id) REFERENCES users(id),
+                        FOREIGN KEY(artifact_id) REFERENCES artifacts(id)
+                    )
+                """)
+                print("Created user_artifacts table")
+                
+        except sqlite3.Error as e:
+            print(f"Database initialization error: {str(e)}")
+            raise
+        except Exception as e:
+            print(f"Unexpected error during database initialization: {str(e)}")
+            raise
             
     def create(self, data: Dict[str, Any]) -> str:
         """Create a new record"""
-        table = data.pop("table")
-        id = data.pop("id")
-        
-        placeholders = ",".join(["?"] * len(data))
-        columns = ",".join(data.keys())
-        
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                f"INSERT INTO {table} (id,{columns}) VALUES (?,{placeholders})",
-                [id] + list(data.values())
-            )
-        return id
+        try:
+            table = data.pop("table")
+            id = data.pop("id")
+            
+            placeholders = ",".join(["?"] * len(data))
+            columns = ",".join(data.keys())
+            values = [id] + list(data.values())
+            
+            print(f"Creating record in {table} with ID {id}")
+            print(f"Columns: {columns}")
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"INSERT INTO {table} (id,{columns}) VALUES (?,{placeholders})",
+                    values
+                )
+                conn.commit()
+                print(f"Successfully created record in {table}")
+            return id
+            
+        except sqlite3.Error as e:
+            print(f"Database error in create: {str(e)}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error in create: {str(e)}")
+            return None
         
     def read(self, id: str, table: str) -> Optional[Dict[str, Any]]:
         """Read a record"""
@@ -132,7 +161,7 @@ class SQLiteStorage(StorageInterface):
                             ELSE account_locked 
                         END
                     WHERE username = ?
-                """, [datetime.utcnow().timestamp(), username])
+                """, [datetime.now().timestamp(), username])
             
     def get_user_artifacts(self, user_id: str) -> List[str]:
         """Get list of artifact IDs owned by user"""

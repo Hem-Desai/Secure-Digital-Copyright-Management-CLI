@@ -19,11 +19,18 @@ class ArtifactService:
     def create_artifact(self, user: User, name: str, 
                        content_type: str, content: bytes) -> Optional[str]:
         """Create a new artifact using secure enclave"""
-        metadata = {
-            "name": name,
-            "content_type": content_type
-        }
-        return self.secure_enclave.handle_upload_request(user, content, metadata)
+        try:
+            metadata = {
+                "name": name,
+                "content_type": content_type
+            }
+            result = self.secure_enclave.handle_upload_request(user, content, metadata)
+            if not result:
+                print("Secure enclave failed to handle upload request")
+            return result
+        except Exception as e:
+            print(f"Artifact creation error: {str(e)}")
+            return None
         
     def read_artifact(self, user: User, artifact_id: str) -> Optional[bytes]:
         """Read an artifact's content using secure enclave"""

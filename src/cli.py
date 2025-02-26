@@ -1,6 +1,7 @@
 import click
 import getpass
 import sys
+import json
 from typing import Optional
 from pathlib import Path
 import os
@@ -10,15 +11,59 @@ from src.services.artifact_service import ArtifactService
 from src.utils.logging import AuditLogger
 from src.auth.rbac import RBACManager
 from src.storage.db_storage import SQLiteStorage
+from src.services.secure_enclave_service import SecureEnclaveService
+from src.models.content_type import ContentType
+
+# Constants
+SESSION_FILE = ".session"
 
 class CLI:
     def __init__(self):
-        self.artifact_service = ArtifactService()
+        self.db = SQLiteStorage()
         self.rbac_manager = RBACManager()
         self.logger = AuditLogger()
-        self.db = SQLiteStorage()
+        self.secure_enclave = SecureEnclaveService()
         self.current_user: Optional[User] = None
+        self._load_session()
         
+    def _load_session(self):
+        """Load user session if exists"""
+        try:
+            if os.path.exists(SESSION_FILE):
+                with open(SESSION_FILE, 'r') as f:
+                    session_data = json.load(f)
+                    if session_data.get("user_id"):  # Changed from username to user_id
+                        user_data = self.db.read(session_data["user_id"], "users")  # Changed from get_user_by_username
+                        if user_data:
+                            self.current_user = User(
+                                id=user_data["id"],
+                                username=user_data["username"],
+                                password_hash=user_data["password_hash"],
+                                role=UserRole(user_data["role"]),
+                                created_at=user_data["created_at"],
+                                artifacts=self.db.get_user_artifacts(user_data["id"]),
+                                failed_login_attempts=user_data.get("failed_login_attempts", 0),
+                                last_login_attempt=user_data.get("last_login_attempt", 0)
+                            )
+        except Exception as e:
+            print(f"Error loading session: {str(e)}")
+            
+    def _save_session(self, user_id: str):  # Changed from username to user_id
+        """Save user session"""
+        try:
+            with open(SESSION_FILE, "w") as f:
+                json.dump({"user_id": user_id}, f)  # Changed from username to user_id
+        except Exception as e:
+            print(f"Error saving session: {str(e)}")
+            
+    def _clear_session(self):
+        """Clear user session"""
+        try:
+            if os.path.exists(SESSION_FILE):
+                os.remove(SESSION_FILE)
+        except Exception as e:
+            print(f"Error clearing session: {str(e)}")
+            
     def login(self) -> bool:
         """Handle user login with rate limiting"""
         print("\nSecure Digital Copyright Management System")
@@ -43,7 +88,7 @@ class CLI:
             
         # Check rate limiting
         last_attempt = user_data.get("last_login_attempt", 0)
-        if datetime.utcnow().timestamp() - last_attempt < 30:  # 30 second delay between attempts
+        if datetime.now().timestamp() - last_attempt < 30:  # 30 second delay between attempts
             print("Please wait before trying again")
             return False
             
@@ -58,6 +103,7 @@ class CLI:
             self.current_user = user
             self.db.update_login_attempt(username, True)
             self.logger.log_auth_attempt(username, True, "127.0.0.1")
+            self._save_session(user.id)
             print(f"\nWelcome {username}! You are logged in as: {user.role.value}")
             return True
             
@@ -98,11 +144,60 @@ class CLI:
             "password_hash": user.password_hash,
             "role": user.role.value,
             "created_at": user.created_at,
-            "password_last_changed": datetime.utcnow().timestamp()
+            "password_last_changed": datetime.now().timestamp()
         })
         
         print(f"User {username} created successfully with role {role.value}")
         return True
+
+    def login_with_credentials(self, username: str, password: str) -> bool:
+        """Handle user login with rate limiting"""
+        if not username or not password:
+            print("Username and password cannot be empty")
+            return False
+        
+        # Check if user exists and isn't locked
+        user_data = self.db.get_user_by_username(username)
+        if not user_data:
+            print("Invalid username or password")
+            return False
+        
+        # Check for account lockout
+        if user_data.get("account_locked"):
+            print("Account is locked due to too many failed attempts.")
+            print("Please contact your administrator.")
+            return False
+        
+        # Check rate limiting
+        last_attempt = user_data.get("last_login_attempt", 0)
+        if datetime.now().timestamp() - last_attempt < 30:  # 30 second delay between attempts
+            print("Please wait before trying again")
+            return False
+        
+        # Attempt authentication
+        user = self.rbac_manager.authenticate(username, password)
+        if user:
+            self.current_user = user
+            self.db.update_login_attempt(username, True)
+            self.logger.log_auth_attempt(username, True, "127.0.0.1")
+            self._save_session(user.id)
+            print(f"\nWelcome {username}! You are logged in as: {user.role.value}")
+            return True
+        
+        # Handle failed login
+        self.db.update_login_attempt(username, False)
+        self.logger.log_auth_attempt(username, False, "127.0.0.1")
+        print("Invalid username or password")
+        return False
+
+    def logout(self) -> None:
+        """Logout current user"""
+        if self.current_user:
+            self._clear_session()
+            self.current_user = None
+            print("Logged out successfully")
+        else:
+            print("No user is currently logged in")
 
 @click.group()
 @click.pass_context
@@ -111,10 +206,12 @@ def main(ctx):
     ctx.obj = CLI()
 
 @main.command()
+@click.argument("username")
 @click.pass_obj
-def login(cli: CLI):
+def login(cli: CLI, username: str):
     """Login to the system"""
-    if cli.login():
+    password = getpass.getpass("Password: ")
+    if cli.login_with_credentials(username, password):
         print("Login successful")
     else:
         sys.exit(1)
@@ -126,6 +223,11 @@ def login(cli: CLI):
 def create_user(cli: CLI, username: str, role: str):
     """Create a new user (admin only)"""
     cli.require_auth()
+    
+    if cli.current_user.role != UserRole.ADMIN:
+        print("Only administrators can create new users")
+        sys.exit(1)
+        
     password = getpass.getpass("Enter password for new user: ")
     confirm = getpass.getpass("Confirm password: ")
     
@@ -134,54 +236,89 @@ def create_user(cli: CLI, username: str, role: str):
         sys.exit(1)
         
     role_enum = UserRole(role.lower())
-    if not cli.create_user(username, password, role_enum):
+    user = cli.rbac_manager.create_user(username, password, role_enum)
+    if not user:
+        print("Failed to create user. Password must meet complexity requirements:")
+        print("- Minimum 8 characters")
+        print("- At least one uppercase letter")
+        print("- At least one lowercase letter")
+        print("- At least one number")
+        print("- At least one special character")
         sys.exit(1)
+        
+    # Store user in database
+    cli.db.create({
+        "table": "users",
+        "id": user.id,
+        "username": user.username,
+        "password_hash": user.password_hash,
+        "role": user.role.value,
+        "created_at": user.created_at,
+        "password_last_changed": datetime.now().timestamp()
+    })
+    
+    print(f"User {username} created successfully with role {role}")
 
 @main.command()
-@click.argument('file', type=click.Path(exists=True))
-@click.option('--name', prompt=True)
-@click.option('--type', 'content_type', prompt=True, 
-              type=click.Choice(['lyrics', 'score', 'audio', 'video']))
+@click.argument('file')
+@click.option('--name', help='Name of the artifact')
+@click.option('--type', 'content_type', help='Content type of the artifact')
 @click.pass_obj
-def upload(cli: CLI, file: str, name: str, content_type: str):
-    """Upload a new artifact with encryption"""
-    cli.require_auth()
-    
+def upload(cli: CLI, file: str, name: str = None, content_type: str = None):
+    """Upload a file to the system"""
     try:
-        print("\nProcessing upload request...")
-        print("1. Authenticating and checking permissions...")
-        
-        # File size check
+        # Validate file exists
+        if not os.path.exists(file):
+            click.echo(f"Error: File {file} does not exist")
+            sys.exit(1)
+
+        # Check authentication
+        cli.require_auth()
+
+        # Use filename as name if not provided
+        if not name:
+            name = os.path.basename(file)
+
+        # Get file extension and determine content type
+        _, ext = os.path.splitext(file)
+        if not content_type:
+            content_type = ContentType.from_extension(ext.lstrip('.')).value
+
+        # Get file size
         file_size = os.path.getsize(file)
-        if file_size > 100 * 1024 * 1024:  # 100MB limit
-            print("Error: File size exceeds 100MB limit")
-            sys.exit(1)
-            
-        print("2. Reading and preparing file data...")
-        with open(file, 'rb') as f:
-            content = f.read()
-            
-        print("3. Encrypting and storing file...")
-        artifact_id = cli.artifact_service.create_artifact(
-            cli.current_user,
-            name,
-            content_type,
-            content
-        )
         
-        if artifact_id:
-            print("4. Finalizing upload...")
-            print(f"\nSuccess! Artifact created with ID: {artifact_id}")
-            print(f"Type: {content_type}")
-            print(f"Size: {file_size / 1024:.1f} KB")
-            print("\nUse this ID to download the file later.")
-        else:
-            print("\nError: Failed to create artifact")
-            print("Please check your permissions and try again.")
+        # Validate file size (e.g., limit to 100MB)
+        max_size = 100 * 1024 * 1024  # 100MB in bytes
+        if file_size > max_size:
+            click.echo(f"\nError: File size ({file_size / 1024 / 1024:.1f}MB) exceeds maximum allowed size (100MB)")
             sys.exit(1)
-            
+
+        click.echo("\nProcessing upload request...")
+        click.echo(f"File size: {file_size / 1024 / 1024:.1f}MB")
+        click.echo(f"Content type: {content_type}")
+        
+        # Upload file
+        artifact_id = cli.secure_enclave.handle_upload_request(
+            user=cli.current_user,
+            file_path=file,
+            name=name,
+            content_type=content_type,
+            file_size=file_size
+        )
+
+        if artifact_id:
+            click.echo("\nSuccess! File uploaded successfully.")
+            click.echo(f"Artifact ID: {artifact_id}")
+            click.echo(f"Name: {name}")
+            click.echo(f"Type: {content_type}")
+            click.echo(f"Size: {file_size / 1024 / 1024:.1f}MB")
+        else:
+            click.echo("\nError: Failed to upload file.")
+            click.echo("Please check your permissions and try again.")
+            sys.exit(1)
+
     except Exception as e:
-        print(f"\nError: {e}")
+        click.echo(f"\nError: {str(e)}")
         sys.exit(1)
 
 @main.command()
@@ -260,6 +397,47 @@ def whoami(cli: CLI):
             print("\nOwned artifact IDs:")
             for artifact_id in artifacts:
                 print(f"- {artifact_id}")
+
+@main.command()
+@click.pass_obj
+def logout(cli: CLI):
+    """Logout from the system"""
+    cli.logout()
+
+def get_current_user() -> Optional[User]:
+    """Get the current logged in user"""
+    try:
+        # Check if session file exists
+        if not os.path.exists(SESSION_FILE):
+            return None
+
+        # Read session file
+        with open(SESSION_FILE, 'r') as f:
+            session_data = json.load(f)
+
+        # Check if session is valid
+        if not session_data or 'user_id' not in session_data:
+            return None
+
+        # Get user from database
+        storage = SQLiteStorage()
+        user_data = storage.get(session_data['user_id'], 'users')
+        
+        if not user_data:
+            return None
+
+        # Create user object
+        return User(
+            id=user_data['id'],
+            username=user_data['username'],
+            role=UserRole(user_data['role']),
+            created_at=user_data['created_at'],
+            password_last_changed=user_data['password_last_changed']
+        )
+
+    except Exception as e:
+        print(f"Error getting current user: {str(e)}")
+        return None
 
 if __name__ == "__main__":
     main() 

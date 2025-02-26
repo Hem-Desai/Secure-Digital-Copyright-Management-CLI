@@ -8,6 +8,8 @@ from ..storage.db_storage import SQLiteStorage
 from ..utils.logging import AuditLogger
 from ..utils.checksum import generate_checksum
 import os
+import uuid
+import hashlib
 
 # Design Pattern: Facade Pattern
 # The SecureEnclaveService acts as a facade, providing a simplified interface
@@ -47,7 +49,7 @@ class SecureEnclaveService:
                 "permission": permission.value,
                 "resource": resource_id,
                 "granted": authorized,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now().isoformat()
             }
         )
         return authorized
@@ -73,102 +75,87 @@ class SecureEnclaveService:
                 {
                     "error": str(e),
                     "path": str(path) if 'path' in locals() else None,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 },
                 "failure"
             )
             return False
             
-    def handle_upload_request(self, user: User, file_data: bytes, 
-                            metadata: Dict[str, Any]) -> Optional[str]:
-        """
-        Command Pattern: Upload operation implementation
-        Handles the complete upload workflow with security checks
-        """
+    def handle_upload_request(self, user: User, file_path: str, name: str, content_type: str, file_size: int) -> Optional[str]:
+        """Handle upload request from a user"""
         try:
-            # Security: Check file size limits
-            if len(file_data) > 100 * 1024 * 1024:  # 100MB limit
-                raise ValueError("File size exceeds limit")
-                
-            # Security: Validate metadata
-            if not metadata.get("name") or not metadata.get("content_type"):
-                raise ValueError("Invalid metadata")
-                
-            # Steps 1-3: Authentication and Authorization
-            if not self._confirm_authorization(user, Permission.CREATE):
+            print(f"Processing upload request for user {user.username} with role {user.role}")
+            
+            # Check authorization
+            if not self.rbac.check_permission(user, Permission.UPLOAD):
+                print(f"User {user.username} does not have upload permission")
                 return None
+
+            # Read and encrypt file
+            try:
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                print(f"Successfully read file: {file_path}")
+            except Exception as e:
+                print(f"Error reading file {file_path}: {str(e)}")
+                return None
+
+            # Generate encryption key and encrypt content
+            try:
+                key_id, _ = self.file_encryption.generate_key()
+                print(f"Generated encryption key: {key_id}")
                 
-            # Step 4-5: Encryption
-            key_id, encryption_key = self.file_encryption.generate_key()
-            encrypted_data = self.file_encryption.encrypt(file_data, key_id)
+                encrypted_content = self.file_encryption.encrypt(content, key_id)
+                if not encrypted_content:
+                    print("Failed to encrypt content - encryption returned None")
+                    return None
+                print("Successfully encrypted content")
+            except Exception as e:
+                print(f"Encryption error: {str(e)}")
+                return None
+
+            # Create artifact entry
+            artifact_id = str(uuid.uuid4())
+            print(f"Generated artifact ID: {artifact_id}")
             
-            if not encrypted_data:
-                raise Exception("Encryption failed")
-                
-            # Generate artifact ID and checksum
-            artifact_id = f"artifact_{datetime.utcnow().timestamp()}"
-            checksum = generate_checksum(file_data)
-            
-            # Step 6: Store encrypted file
-            if not self.file_storage.save_file(artifact_id, encrypted_data):
-                raise Exception("File storage failed")
-                
-            # Step 7: Confirm file path
-            if not self._confirm_file_path(artifact_id):
-                raise Exception("File path verification failed")
-                
-            # Step 8: Store metadata
-            now = datetime.utcnow().timestamp()
-            metadata_stored = self.db.create({
-                "table": "artifacts",
-                "id": artifact_id,
-                "name": metadata.get("name", ""),
-                "content_type": metadata.get("content_type", ""),
-                "owner_id": user.id,
-                "created_at": now,
-                "modified_at": now,
-                "checksum": checksum,
-                "encrypted_content": encrypted_data,
-                "encryption_key_id": key_id,
-                "file_size": len(file_data)
-            })
-            
-            if not metadata_stored:
-                raise Exception("Failed to store metadata")
-                
-            # Update owner's artifacts list
-            if user.role == UserRole.OWNER:
-                if not self.rbac.add_artifact_to_owner(user, artifact_id):
-                    raise Exception("Failed to update owner's artifacts")
-                    
-            # Step 9-11: Logging and confirmation
-            self.logger.log_event(
-                "upload_artifact",
-                user.id,
-                {
-                    "artifact_id": artifact_id,
-                    "content_type": metadata.get("content_type"),
-                    "file_size": len(file_data),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            )
-            
+            artifact = {
+                'table': 'artifacts',
+                'id': artifact_id,
+                'name': name,
+                'content_type': content_type,
+                'owner_id': user.id,
+                'created_at': datetime.now().timestamp(),
+                'modified_at': datetime.now().timestamp(),
+                'checksum': hashlib.sha256(content).hexdigest(),
+                'encrypted_content': encrypted_content,
+                'encryption_key_id': key_id,
+                'file_size': file_size
+            }
+
+            # Store artifact
+            try:
+                self.db.create(artifact)
+                print(f"Successfully stored artifact in database")
+            except Exception as e:
+                print(f"Database storage error: {str(e)}")
+                return None
+
+            # Add artifact to owner's list
+            if not self.rbac.add_artifact_to_owner(user.id, artifact_id):
+                print(f"Failed to add artifact {artifact_id} to owner {user.id}")
+                # Cleanup: remove artifact from storage
+                try:
+                    self.db.delete(artifact_id, 'artifacts')
+                    print(f"Cleaned up artifact {artifact_id} from database")
+                except Exception as e:
+                    print(f"Cleanup error for artifact {artifact_id}: {str(e)}")
+                return None
+
+            print(f"Successfully completed upload process for artifact {artifact_id}")
             return artifact_id
-            
+
         except Exception as e:
-            self.logger.log_event(
-                "upload_artifact",
-                user.id,
-                {
-                    "error": str(e),
-                    "metadata": metadata,
-                    "timestamp": datetime.utcnow().isoformat()
-                },
-                "failure"
-            )
-            # Cleanup on failure (Template Method Pattern)
-            if 'artifact_id' in locals():
-                self.file_storage.delete_file(artifact_id)
+            print(f"Unexpected error in handle_upload_request: {str(e)}")
             return None
             
     def handle_download_request(self, user: User, artifact_id: str) -> Optional[bytes]:
@@ -214,7 +201,7 @@ class SecureEnclaveService:
                     "artifact_id": artifact_id,
                     "content_type": artifact["content_type"],
                     "file_size": len(decrypted_data),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 }
             )
             
@@ -227,7 +214,7 @@ class SecureEnclaveService:
                 {
                     "artifact_id": artifact_id,
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 },
                 "failure"
             )

@@ -23,7 +23,7 @@ class AuditLogger:
                   status: str = "success") -> None:
         """Log an audit event"""
         event = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
             "user_id": user_id,
             "status": status,
