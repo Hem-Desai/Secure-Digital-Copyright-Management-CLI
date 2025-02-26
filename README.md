@@ -1,83 +1,46 @@
-````markdown:README.md
-# Secure Digital Copyright Management CLI
+# Secure Digital Copyright Management System
 
-A secure command-line interface (CLI) application for managing copyrighted digital content (lyrics, scores, audio files) with encryption, access control, and comprehensive audit logging.
+A secure CLI-based application for managing digital copyright artifacts with role-based access control and encryption.
 
 ## Features
 
-- 🔐 Secure storage of digital artifacts (lyrics, scores, audio files)
-- 🔒 AES-256 encryption for all stored content
-- 👥 Role-based access control (Admin, Owner, Viewer)
-- ✅ File integrity verification via checksums
-- 📝 Comprehensive audit logging
-- 🔑 JWT-based authentication
+- **Role-Based Access Control (RBAC)**
 
-## Project Structure
-```bash
-secure-dcm/
-├── src/
-│   ├── __init__.py
-│   ├── auth/
-│   │   ├── __init__.py
-│   │   ├── jwt_handler.py    # JWT authentication
-│   │   └── rbac.py          # Role-based access control
-│   ├── storage/
-│   │   ├── __init__.py
-│   │   ├── storage_interface.py
-│   │   ├── file_storage.py   # File system storage
-│   │   └── db_storage.py     # SQLite storage
-│   ├── encryption/
-│   │   ├── __init__.py
-│   │   ├── encryption_strategy.py
-│   │   └── aes_handler.py    # AES-256 encryption
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── user.py          # User model
-│   │   └── artifact.py      # Artifact model
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   ├── logging.py       # Audit logging
-│   │   └── checksum.py      # File integrity
-│   └── cli.py               # CLI interface
-├── tests/
-│   ├── __init__.py
-│   ├── test_auth.py
-│   ├── test_storage.py
-│   └── test_encryption.py
-├── requirements.txt         # Dependencies
-├── README.md
-└── main.py                 # Entry point
-````
+  - Admin: Full system access
+  - Owner: Manage owned artifacts
+  - Viewer: Read-only access
 
-## Prerequisites
+- **Security Features**
 
-- Python 3.7 or higher
-- pip (Python package installer)
-- Git (for cloning the repository)
+  - AES-256 encryption for all stored files
+  - Bcrypt password hashing
+  - File integrity verification
+  - Rate limiting for login attempts
+  - Account lockout protection
+  - Comprehensive audit logging
+  - Path traversal protection
+
+- **File Management**
+  - Upload artifacts (MP3s, lyrics, scores, etc.)
+  - Download with decryption
+  - Update existing artifacts
+  - Delete with secure cleanup
+  - List available artifacts
 
 ## Installation
 
 1. Clone the repository:
 
 ```bash
-git clone <repository-url>
-cd secure-dcm
+git clone [repository-url]
+cd [repository-name]
 ```
 
-2. Create and activate a virtual environment:
-
-Windows:
+2. Create a virtual environment:
 
 ```bash
 python -m venv venv
-venv\Scripts\activate
-```
-
-Linux/Mac:
-
-```bash
-python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. Install dependencies:
@@ -86,273 +49,111 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Initial Setup
-
-The system will automatically create these directories on first run:
-
-- `secure_storage/` - For encrypted files
-- `audit.log` - For system logs
-- `secure_dcm.db` - SQLite database
-
 ## Usage
 
-### Basic Commands
-
-1. **Start by logging in**:
+1. Start the application:
 
 ```bash
-python main.py login
-# Use credentials:
-# Username: admin
-# Password: admin
+python -m src.cli
 ```
 
-2. **Upload a file**:
+2. Available commands:
+
+- Login:
 
 ```bash
-python main.py upload path/to/file.txt --name "My File" --type lyrics
+python -m src.cli login
 ```
 
-Supported types: `lyrics`, `score`, `audio`
-
-3. **Download a file**:
+- Create new user (admin only):
 
 ```bash
-python main.py download <artifact_id> output_file.txt
+python -m src.cli create-user USERNAME ROLE
+# ROLE can be: admin, owner, or viewer
 ```
 
-4. **List all artifacts**:
+- Upload artifact:
 
 ```bash
-python main.py list
+python -m src.cli upload FILE --name NAME --type TYPE
+# TYPE can be: lyrics, score, audio, video
 ```
 
-### Command Details
-
-#### Upload Command
+- Download artifact:
 
 ```bash
-python main.py upload [OPTIONS] FILE
-Options:
-  --name TEXT          Name of the artifact (required)
-  --type [lyrics|score|audio]  Type of content (required)
+python -m src.cli download ARTIFACT_ID OUTPUT_PATH
 ```
 
-Example:
+- List artifacts:
 
 ```bash
-python main.py upload lyrics.txt --name "Song Lyrics" --type lyrics
+python -m src.cli list
 ```
 
-#### Download Command
+- Show current user info:
 
 ```bash
-python main.py download ARTIFACT_ID OUTPUT_PATH
+python -m src.cli whoami
 ```
 
-Example:
+## Security Best Practices
+
+1. Use strong passwords following the complexity requirements:
+
+   - Minimum 8 characters
+   - At least one uppercase letter
+   - At least one lowercase letter
+   - At least one number
+   - At least one special character
+
+2. Regular password changes are recommended
+
+3. Keep your encryption keys secure
+
+4. Monitor audit logs for suspicious activity
+
+## Design Patterns Used
+
+1. **Facade Pattern** (SecureEnclaveService)
+
+   - Simplifies complex security and storage operations
+
+2. **Strategy Pattern** (Authorization)
+
+   - Flexible permission checking implementation
+
+3. **Command Pattern** (Upload/Download operations)
+
+   - Encapsulates request processing
+
+4. **Template Method Pattern** (File operations)
+
+   - Defines skeleton of operations
+
+5. **Dependency Injection**
+   - Loose coupling between components
+
+## Testing
+
+Run the test suite:
 
 ```bash
-python main.py download abc123xyz downloaded_lyrics.txt
+pytest tests/
 ```
 
-## Access Control
-
-The system implements three user roles:
-
-1. **Admin**
-
-   - Full access to all operations
-   - Can create, read, update, and delete any artifact
-
-2. **Owner**
-
-   - Can manage their own artifacts
-   - Can read, update, and delete owned artifacts
-   - Cannot access others' artifacts
-
-3. **Viewer**
-   - Read-only access
-   - Can list and download artifacts
-   - Cannot modify any content
-
-## Security Features
-
-### Encryption
-
-- AES-256 encryption for all stored content
-- Secure key management
-- Encrypted file storage
-
-### Authentication
-
-- JWT-based token authentication
-- Secure password handling
-- Session management
-
-### File Integrity
-
-- SHA-256 checksum verification
-- Automatic validation on file operations
-- Tamper detection
-
-## Logging
-
-The system maintains comprehensive audit logs in `audit.log`:
-
-- Authentication attempts
-- File operations
-- Access control violations
-- System errors
-
-View logs:
+Run security checks:
 
 ```bash
-# Last 10 entries
-tail -n 10 audit.log
-
-# Real-time monitoring
-tail -f audit.log
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Import Errors**
-
-   ```bash
-   # Windows (PowerShell)
-   $env:PYTHONPATH = "path\to\secure-dcm"
-
-   # Linux/Mac
-   export PYTHONPATH=/path/to/secure-dcm
-   ```
-
-2. **Permission Denied**
-
-   - Verify login status
-   - Check file permissions
-   - Ensure database is writable
-
-3. **Storage Issues**
-   - Verify `secure_storage/` exists
-   - Check disk space
-   - Confirm write permissions
-
-### Error Messages
-
-1. "Please login first"
-
-   - Run `python main.py login`
-   - Use admin credentials
-
-2. "Failed to create artifact"
-
-   - Verify file exists
-   - Check file permissions
-   - Ensure sufficient storage
-
-3. "Permission denied"
-   - Verify user role
-   - Check artifact ownership
-   - Confirm required permissions
-
-## Development
-
-### Running Tests
-
-```bash
-# All tests
-python -m unittest discover tests
-
-# Specific test
-python -m unittest tests.test_auth
-```
-
-### Security Testing
-
-```bash
-pip install bandit
 bandit -r src/
 ```
 
-## Development Setup
-
-### Code Quality Tools
-
-1. Install development dependencies:
+Run type checking:
 
 ```bash
-pip install -r requirements.txt
-```
-
-2. Install pre-commit hooks:
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-3. Run code formatting:
-
-```bash
-# Format code
-black src/
-
-# Check style
-flake8 src/
-
-# Security check
-bandit -r src/
-```
-
-### JWT Authentication
-
-The system uses JWT tokens for authentication. Each token contains:
-
-- User ID
-- Role
-- Expiration time (1 hour)
-
-Example token payload:
-
-```json
-{
-  "user_id": "admin",
-  "role": "admin",
-  "exp": 1679831400,
-  "iat": 1679827800
-}
-```
-
-## Maintenance
-
-### Regular Tasks
-
-1. Monitor `audit.log`
-2. Backup `secure_storage/`
-3. Check database integrity
-4. Update dependencies
-
-### Database Maintenance
-
-```bash
-# Backup
-sqlite3 secure_dcm.db ".backup 'backup.db'"
-
-# Check integrity
-sqlite3 secure_dcm.db "PRAGMA integrity_check;"
+mypy src/
 ```
 
 ## License
 
-Copyright (c) 2024. All rights reserved.
-
-## Support
-
-For support:
-
-1. Check troubleshooting section
-2. Review error logs
-3. Create an issue in the repository
+[Your License]

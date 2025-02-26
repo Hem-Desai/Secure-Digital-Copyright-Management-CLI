@@ -9,17 +9,36 @@ from ..utils.logging import AuditLogger
 from ..utils.checksum import generate_checksum
 import os
 
+# Design Pattern: Facade Pattern
+# The SecureEnclaveService acts as a facade, providing a simplified interface
+# to the complex subsystem of security, storage, and encryption operations.
 class SecureEnclaveService:
+    """
+    Secure Enclave Service implements the Facade pattern to provide a unified
+    interface for all security-related operations. It coordinates:
+    - Authentication and Authorization (RBAC)
+    - File Encryption/Decryption (AES-256)
+    - Secure Storage (File System + Database)
+    - Audit Logging
+    - File Integrity Checks
+    """
     def __init__(self):
+        # Initialize components following Dependency Injection pattern
         self.rbac = RBACManager()
         self.file_encryption = AESHandler()
         self.file_storage = FileStorage()
         self.db = SQLiteStorage()
         self.logger = AuditLogger()
         
+        # Ensure secure storage directory exists
+        os.makedirs(self.file_storage.base_path, exist_ok=True)
+        
     def _confirm_authorization(self, user: User, permission: Permission, 
                              resource_id: Optional[str] = None) -> bool:
-        """Explicit authorization confirmation step"""
+        """
+        Strategy Pattern: Authorization strategy implementation
+        Handles permission checks and audit logging
+        """
         authorized = self.rbac.check_permission(user, permission, resource_id)
         self.logger.log_event(
             "authorization_check",
@@ -27,24 +46,35 @@ class SecureEnclaveService:
             {
                 "permission": permission.value,
                 "resource": resource_id,
-                "granted": authorized
+                "granted": authorized,
+                "timestamp": datetime.utcnow().isoformat()
             }
         )
         return authorized
         
     def _confirm_file_path(self, artifact_id: str) -> bool:
-        """Confirm file path exists and is secure"""
+        """
+        Template Method Pattern: File path validation
+        Ensures file paths are within secure storage and properly formatted
+        """
         try:
             path = self.file_storage._get_file_path(artifact_id)
-            # Check if path is within secure storage
+            # Security: Prevent path traversal attacks
             if not str(path).startswith(str(self.file_storage.base_path)):
-                raise ValueError("Invalid file path")
+                raise ValueError("Invalid file path - potential path traversal")
+            # Security: Check path format
+            if not path.is_absolute():
+                raise ValueError("Invalid file path - must be absolute")
             return True
         except Exception as e:
             self.logger.log_event(
                 "file_path_check",
                 "system",
-                {"error": str(e)},
+                {
+                    "error": str(e),
+                    "path": str(path) if 'path' in locals() else None,
+                    "timestamp": datetime.utcnow().isoformat()
+                },
                 "failure"
             )
             return False
@@ -52,20 +82,18 @@ class SecureEnclaveService:
     def handle_upload_request(self, user: User, file_data: bytes, 
                             metadata: Dict[str, Any]) -> Optional[str]:
         """
-        Handle artifact upload request following the sequence diagram:
-        1. Forward request for authentication
-        2. Query user role and permissions
-        3. Grant/Deny permission
-        4. Send file data for encryption
-        5. Return encrypted file + encryption key
-        6. Store encrypted file
-        7. Confirm file path
-        8. Store artifact metadata
-        9. Return artifact ID
-        10. Log upload event
-        11. Confirm logging
+        Command Pattern: Upload operation implementation
+        Handles the complete upload workflow with security checks
         """
         try:
+            # Security: Check file size limits
+            if len(file_data) > 100 * 1024 * 1024:  # 100MB limit
+                raise ValueError("File size exceeds limit")
+                
+            # Security: Validate metadata
+            if not metadata.get("name") or not metadata.get("content_type"):
+                raise ValueError("Invalid metadata")
+                
             # Steps 1-3: Authentication and Authorization
             if not self._confirm_authorization(user, Permission.CREATE):
                 return None
@@ -120,7 +148,8 @@ class SecureEnclaveService:
                 {
                     "artifact_id": artifact_id,
                     "content_type": metadata.get("content_type"),
-                    "file_size": len(file_data)
+                    "file_size": len(file_data),
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             )
             
@@ -132,26 +161,20 @@ class SecureEnclaveService:
                 user.id,
                 {
                     "error": str(e),
-                    "metadata": metadata
+                    "metadata": metadata,
+                    "timestamp": datetime.utcnow().isoformat()
                 },
                 "failure"
             )
-            # Cleanup on failure
+            # Cleanup on failure (Template Method Pattern)
             if 'artifact_id' in locals():
                 self.file_storage.delete_file(artifact_id)
             return None
             
     def handle_download_request(self, user: User, artifact_id: str) -> Optional[bytes]:
         """
-        Handle artifact download request:
-        1. Forward request for authentication
-        2. Query user role and permissions
-        3. Grant/Deny permission
-        4. Retrieve encrypted file
-        5. Decrypt file
-        6. Verify checksum
-        7. Log operation
-        8. Confirm logging
+        Command Pattern: Download operation implementation
+        Handles the complete download workflow with security checks
         """
         try:
             # Steps 1-3: Authentication and Authorization
@@ -190,7 +213,8 @@ class SecureEnclaveService:
                 {
                     "artifact_id": artifact_id,
                     "content_type": artifact["content_type"],
-                    "file_size": len(decrypted_data)
+                    "file_size": len(decrypted_data),
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             )
             
@@ -202,7 +226,8 @@ class SecureEnclaveService:
                 user.id,
                 {
                     "artifact_id": artifact_id,
-                    "error": str(e)
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
                 },
                 "failure"
             )
