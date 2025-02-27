@@ -325,4 +325,55 @@ class SecureEnclaveService:
                 },
                 "failure"
             )
-            return None 
+            return None
+
+    def delete_artifact(self, user: User, artifact_id: str) -> bool:
+        """Delete an artifact securely"""
+        try:
+            # Verify permissions
+            if not self._confirm_authorization(user, Permission.DELETE, artifact_id):
+                print("Permission denied")
+                return False
+                
+            # Get artifact to verify existence
+            artifact = self.db.read(artifact_id, "artifacts")
+            if not artifact:
+                print("Artifact not found")
+                return False
+                
+            # Delete database record
+            if not self.db.delete(artifact_id, "artifacts"):
+                print("Failed to delete artifact from database")
+                return False
+                
+            # Remove from owner's artifacts if applicable
+            if user.role == UserRole.OWNER:
+                if not self.rbac.remove_artifact_from_owner(user.id, artifact_id):
+                    print("Failed to remove artifact from owner's list")
+                    return False
+                
+            # Log successful deletion
+            self.logger.log_event(
+                "delete_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "content_type": artifact["content_type"]
+                }
+            )
+            
+            print(f"Successfully deleted artifact {artifact_id}")
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting artifact: {str(e)}")
+            self.logger.log_event(
+                "delete_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "error": str(e)
+                },
+                "failure"
+            )
+            return False 
