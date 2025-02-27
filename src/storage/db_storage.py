@@ -5,9 +5,16 @@ from .storage_interface import StorageInterface
 from datetime import datetime
 
 class SQLiteStorage(StorageInterface):
+    # Define allowed tables to prevent SQL injection via table names
+    ALLOWED_TABLES = {'users', 'artifacts', 'user_artifacts', 'encryption_keys'}
+    
     def __init__(self, db_path: str = "secure_dcm.db"):
         self.db_path = db_path
         self._init_db()
+        
+    def _validate_table(self, table: str) -> bool:
+        """Validate that the table name is in the allowed set"""
+        return table in self.ALLOWED_TABLES
         
     def _init_db(self):
         """Initialize database tables"""
@@ -69,18 +76,19 @@ class SQLiteStorage(StorageInterface):
         """Create a new record"""
         try:
             table = data.pop("table")
+            if not self._validate_table(table):
+                raise ValueError(f"Invalid table name: {table}")
+                
             id = data.pop("id")
+            columns = list(data.keys())
+            placeholders = ["?"] * (len(columns) + 1)  # +1 for id
             
-            placeholders = ",".join(["?"] * len(data))
-            columns = ",".join(data.keys())
+            query = f"INSERT INTO {table} (id,{','.join(columns)}) VALUES ({','.join(placeholders)})"
             values = [id] + list(data.values())
             
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    f"INSERT INTO {table} (id,{columns}) VALUES (?,{placeholders})",
-                    values
-                )
+                cursor.execute(query, values)
                 conn.commit()
             return id
             
@@ -91,8 +99,12 @@ class SQLiteStorage(StorageInterface):
         
     def read(self, id: str, table: str) -> Optional[Dict[str, Any]]:
         """Read a record"""
+        if not self._validate_table(table):
+            raise ValueError(f"Invalid table name: {table}")
+            
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(f"SELECT * FROM {table} WHERE id = ?", [id])
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (id,))
             row = cursor.fetchone()
             if row:
                 return dict(zip([col[0] for col in cursor.description], row))
@@ -100,28 +112,47 @@ class SQLiteStorage(StorageInterface):
         
     def update(self, id: str, data: Dict[str, Any]) -> bool:
         """Update a record"""
-        table = data.pop("table")
-        updates = ",".join([f"{k}=?" for k in data.keys()])
-        
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                f"UPDATE {table} SET {updates} WHERE id=?",
-                list(data.values()) + [id]
-            )
-            return cursor.rowcount > 0
+        try:
+            table = data.pop("table")
+            if not self._validate_table(table):
+                raise ValueError(f"Invalid table name: {table}")
+                
+            set_values = []
+            values = []
+            for key, value in data.items():
+                set_values.append(f"{key} = ?")
+                values.append(value)
+            values.append(id)
+            
+            query = f"UPDATE {table} SET {', '.join(set_values)} WHERE id = ?"
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, values)
+                return cursor.rowcount > 0
+                
+        except sqlite3.Error as e:
+            raise Exception(f"Database error in update: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Unexpected error in update: {str(e)}")
             
     def delete(self, id: str, table: str) -> bool:
         """Delete a record"""
+        if not self._validate_table(table):
+            raise ValueError(f"Invalid table name: {table}")
+            
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(f"DELETE FROM {table} WHERE id=?", [id])
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM {table} WHERE id = ?", (id,))
             return cursor.rowcount > 0
             
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Get user by username"""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
+            cursor = conn.cursor()
+            cursor.execute(
                 "SELECT * FROM users WHERE username = ?",
-                [username]
+                (username,)
             )
             row = cursor.fetchone()
             if row:
@@ -131,15 +162,16 @@ class SQLiteStorage(StorageInterface):
     def update_login_attempt(self, username: str, success: bool) -> None:
         """Update login attempt tracking"""
         with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
             if success:
-                conn.execute("""
+                cursor.execute("""
                     UPDATE users 
                     SET failed_login_attempts = 0,
                         account_locked = 0
                     WHERE username = ?
-                """, [username])
+                """, (username,))
             else:
-                conn.execute("""
+                cursor.execute("""
                     UPDATE users 
                     SET failed_login_attempts = failed_login_attempts + 1,
                         last_login_attempt = ?,
@@ -148,20 +180,26 @@ class SQLiteStorage(StorageInterface):
                             ELSE account_locked 
                         END
                     WHERE username = ?
-                """, [datetime.now().timestamp(), username])
+                """, (datetime.now().timestamp(), username))
+            conn.commit()
             
     def get_user_artifacts(self, user_id: str) -> List[str]:
         """Get list of artifact IDs owned by user"""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
+            cursor = conn.cursor()
+            cursor.execute(
                 "SELECT artifact_id FROM user_artifacts WHERE user_id = ?",
-                [user_id]
+                (user_id,)
             )
             return [row[0] for row in cursor.fetchall()]
 
     def list(self, table: str) -> List[Dict[str, Any]]:
         """List all records"""
+        if not self._validate_table(table):
+            raise ValueError(f"Invalid table name: {table}")
+            
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(f"SELECT * FROM {table}")
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT * FROM {table}")
             return [dict(row) for row in cursor.fetchall()] 
