@@ -170,17 +170,15 @@ class SecureEnclaveService:
             if not self._confirm_authorization(user, Permission.READ, artifact_id):
                 return None
                 
-            # Step 4: Get artifact metadata and encrypted file
+            # Step 4: Get artifact metadata and encrypted content from database
             artifact = self.db.read(artifact_id, "artifacts")
             if not artifact:
                 raise Exception("Artifact not found")
                 
-            if not self._confirm_file_path(artifact_id):
-                raise Exception("File path verification failed")
-                
-            encrypted_data = self.file_storage.read_file(artifact_id)
+            # Get encrypted content from database
+            encrypted_data = artifact.get("encrypted_content")
             if not encrypted_data:
-                raise Exception("Failed to read encrypted file")
+                raise Exception("No content found in database")
                 
             # Step 5: Decrypt file
             decrypted_data = self.file_encryption.decrypt(
