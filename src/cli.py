@@ -230,37 +230,71 @@ class CLI:
         """Display user menu based on role"""
         while True:
             print(f"\nWelcome {self.current_user.username}!")
-            print("1. Upload artifact")
-            print("2. Download artifact")
-            print("3. List artifacts")
-            print("4. Show my info")
-            if self.current_user.role == UserRole.ADMIN:
-                print("5. Create user")
+            
+            # Initialize menu options list
+            menu_options = []
+            option_number = 1  # Start with 1 and increment sequentially
+            
+            # Add options based on role
             if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                print("6. Delete artifact")
-            print("7. Logout")
-            print("8. Exit")
+                menu_options.append((str(option_number), "Upload artifact"))
+                option_number += 1
+            
+            # Common options for all roles
+            menu_options.append((str(option_number), "Download artifact"))
+            option_number += 1
+            
+            menu_options.append((str(option_number), "List artifacts"))
+            option_number += 1
+            
+            menu_options.append((str(option_number), "Show my info"))
+            option_number += 1
+            
+            # Admin-specific options
+            if self.current_user.role == UserRole.ADMIN:
+                menu_options.append((str(option_number), "Create user"))
+                option_number += 1
+            
+            # Admin and owner options
+            if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+                menu_options.append((str(option_number), "Delete artifact"))
+                option_number += 1
+            
+            menu_options.append((str(option_number), "Logout"))
+            option_number += 1
+            
+            menu_options.append((str(option_number), "Exit"))
+            
+            # Display menu
+            for number, text in menu_options:
+                print(f"{number}. {text}")
 
             try:
-                max_choice = 8
-                choice = input(f"Enter your choice (1-{max_choice}): ")
+                choice = input(f"Enter your choice (1-{len(menu_options)}): ")
                 
-                if choice == "1":
+                # Find the selected option
+                selected_option = None
+                for number, text in menu_options:
+                    if choice == number:
+                        selected_option = text
+                        break
+                
+                if selected_option == "Upload artifact" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
                     self.upload_menu()
-                elif choice == "2":
+                elif selected_option == "Download artifact":
                     self.download_menu()
-                elif choice == "3":
+                elif selected_option == "List artifacts":
                     self.list_artifacts()
-                elif choice == "4":
+                elif selected_option == "Show my info":
                     self.show_user_info()
-                elif choice == "5" and self.current_user.role == UserRole.ADMIN:
+                elif selected_option == "Create user" and self.current_user.role == UserRole.ADMIN:
                     self.create_user_menu()
-                elif choice == "6" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+                elif selected_option == "Delete artifact" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
                     self.delete_artifact_menu()
-                elif choice == "7":
+                elif selected_option == "Logout":
                     self.logout()
                     break
-                elif choice == "8":
+                elif selected_option == "Exit":
                     print("Goodbye!")
                     return False
                 else:
@@ -413,18 +447,37 @@ class CLI:
         print("\nAvailable Artifacts")
         print("==================")
         artifacts = self.secure_enclave.list_artifacts(self.current_user)
+        
         if not artifacts:
             print("No artifacts found.")
             return
             
+        # Calculate column widths
+        id_width = max(len("ID"), max(len(str(a["id"])) for a in artifacts))
+        name_width = max(len("Name"), max(len(str(a["name"])) for a in artifacts))
+        type_width = max(len("Type"), max(len(str(a["content_type"])) for a in artifacts))
+        size_width = max(len("Size (bytes)"), max(len(str(a["file_size"])) for a in artifacts))
+        owner_width = 0
+        if self.current_user.role == UserRole.ADMIN:
+            owner_width = max(len("Owner"), max(len(str(a["owner_id"])) for a in artifacts))
+        
+        # Print header
+        header = f"| {'ID':<{id_width}} | {'Name':<{name_width}} | {'Type':<{type_width}} | {'Size (bytes)':<{size_width}} |"
+        if self.current_user.role == UserRole.ADMIN:
+            header += f" {'Owner':<{owner_width}} |"
+        print("\n" + "=" * len(header))
+        print(header)
+        print("=" * len(header))
+        
+        # Print artifacts
         for artifact in artifacts:
-            print(f"\nID: {artifact['id']}")
-            print(f"Name: {artifact['name']}")
-            print(f"Type: {artifact['content_type']}")
-            print(f"Size: {artifact['file_size']} bytes")
-            print(f"Created: {artifact['created_at']}")
+            row = f"| {str(artifact['id']):<{id_width}} | {str(artifact['name']):<{name_width}} | {str(artifact['content_type']):<{type_width}} | {str(artifact['file_size']):<{size_width}} |"
             if self.current_user.role == UserRole.ADMIN:
-                print(f"Owner: {artifact['owner_id']}")
+                row += f" {str(artifact['owner_id']):<{owner_width}} |"
+            print(row)
+        
+        print("=" * len(header))
+        print(f"\nTotal artifacts: {len(artifacts)}")
 
 @click.group()
 @click.pass_context

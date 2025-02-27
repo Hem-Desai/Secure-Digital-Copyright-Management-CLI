@@ -12,11 +12,9 @@ class SQLiteStorage(StorageInterface):
     def _init_db(self):
         """Initialize database tables"""
         try:
-            print(f"Initializing database at {self.db_path}")
             with sqlite3.connect(self.db_path) as conn:
                 # Enable foreign key support
                 conn.execute("PRAGMA foreign_keys = ON")
-                print("Enabled foreign key support")
                 
                 # Create artifacts table
                 conn.execute("""
@@ -34,7 +32,6 @@ class SQLiteStorage(StorageInterface):
                         FOREIGN KEY(owner_id) REFERENCES users(id)
                     )
                 """)
-                print("Created artifacts table")
                 
                 # Create users table with security fields
                 conn.execute("""
@@ -51,7 +48,6 @@ class SQLiteStorage(StorageInterface):
                         UNIQUE(username)
                     )
                 """)
-                print("Created users table")
                 
                 # Create user_artifacts table for many-to-many relationship
                 conn.execute("""
@@ -63,14 +59,11 @@ class SQLiteStorage(StorageInterface):
                         FOREIGN KEY(artifact_id) REFERENCES artifacts(id)
                     )
                 """)
-                print("Created user_artifacts table")
                 
         except sqlite3.Error as e:
-            print(f"Database initialization error: {str(e)}")
-            raise
+            raise Exception(f"Database initialization error: {str(e)}")
         except Exception as e:
-            print(f"Unexpected error during database initialization: {str(e)}")
-            raise
+            raise Exception(f"Unexpected error during database initialization: {str(e)}")
             
     def create(self, data: Dict[str, Any]) -> str:
         """Create a new record"""
@@ -82,9 +75,6 @@ class SQLiteStorage(StorageInterface):
             columns = ",".join(data.keys())
             values = [id] + list(data.values())
             
-            print(f"Creating record in {table} with ID {id}")
-            print(f"Columns: {columns}")
-            
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -92,15 +82,12 @@ class SQLiteStorage(StorageInterface):
                     values
                 )
                 conn.commit()
-                print(f"Successfully created record in {table}")
             return id
             
         except sqlite3.Error as e:
-            print(f"Database error in create: {str(e)}")
-            return None
+            raise Exception(f"Database error in create: {str(e)}")
         except Exception as e:
-            print(f"Unexpected error in create: {str(e)}")
-            return None
+            raise Exception(f"Unexpected error in create: {str(e)}")
         
     def read(self, id: str, table: str) -> Optional[Dict[str, Any]]:
         """Read a record"""

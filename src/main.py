@@ -136,7 +136,12 @@ class DCMSystem:
 
         print("\nUpload Artifact")
         print("==============")
-        file_path = input("Enter file path: ")
+        print("\nYou can upload files from any location on your system.")
+        print("Examples:")
+        print("  Windows: C:\\Users\\YourName\\Documents\\file.txt")
+        print("  Linux/Mac: /home/username/documents/file.txt")
+        print("\nNote: Use forward slashes (/) or escaped backslashes (\\\\) in the path")
+        file_path = input("\nEnter file path: ")
         name = input("Enter artifact name: ")
         
         print("\nSelect content type:")
@@ -219,12 +224,15 @@ class DCMSystem:
         print("==================")
         
         try:
-            # Get artifacts from artifact service instead of secure enclave
+            # Get all artifacts from database through secure_enclave
             artifacts = self.secure_enclave.db.list("artifacts")
             
             # Filter based on user role
             if self.current_user.role == UserRole.OWNER:
                 artifacts = [a for a in artifacts if a["owner_id"] == self.current_user.id]
+            elif self.current_user.role == UserRole.VIEWER:
+                # Viewers can see all artifacts but with limited info
+                pass  # No filtering needed
             
             if not artifacts:
                 print("\nNo artifacts available.")
@@ -271,8 +279,35 @@ class DCMSystem:
         print("===============")
         print(f"Username: {self.current_user.username}")
         print(f"Role: {self.current_user.role.value}")
-        if self.current_user.role == UserRole.OWNER:
-            print(f"Owned artifacts: {len(self.current_user.artifacts)}")
+        
+        try:
+            if self.current_user.role in [UserRole.OWNER, UserRole.ADMIN]:
+                # Get user's artifacts through secure_enclave
+                if self.current_user.role == UserRole.OWNER:
+                    artifacts = [a for a in self.secure_enclave.db.list("artifacts") 
+                               if a["owner_id"] == self.current_user.id]
+                else:  # Admin sees all artifacts
+                    artifacts = self.secure_enclave.db.list("artifacts")
+                
+                print(f"Number of artifacts: {len(artifacts)}")
+                
+                if artifacts:
+                    total_size = sum(a["file_size"] for a in artifacts)
+                    print(f"Total storage used: {total_size:,} bytes")
+                    
+                    # Show content type breakdown
+                    content_types = {}
+                    for artifact in artifacts:
+                        ct = artifact["content_type"]
+                        content_types[ct] = content_types.get(ct, 0) + 1
+                    
+                    print("\nContent Type Breakdown:")
+                    for ct, count in content_types.items():
+                        print(f"  {ct}: {count} file(s)")
+                        
+        except Exception as e:
+            print(f"Error retrieving user information: {e}")
+            print("Some information may be incomplete.")
 
     def delete_artifact(self):
         """Handle artifact deletion"""
@@ -304,51 +339,90 @@ def main():
             print("2. Login")
             print("3. Exit")
             
-            choice = input("\nEnter your choice (1-3): ")
-            
-            if choice == "1":
-                system.create_user_menu()
-            elif choice == "2":
-                system.login_menu()
-            elif choice == "3":
-                print("\nGoodbye!")
-                break
-            else:
-                print("Invalid choice. Please try again.")
+            try:
+                choice = input("\nEnter your choice (1-3): ")
+                
+                if choice == "1":
+                    system.create_user_menu()
+                elif choice == "2":
+                    system.login_menu()
+                elif choice == "3":
+                    print("\nGoodbye!")
+                    break
+                else:
+                    print("Invalid choice. Please try again.")
+            except Exception as e:
+                print(f"Error: {e}")
         else:
             print(f"\nWelcome {system.current_user.username}!")
-            print("1. Upload artifact")
-            print("2. Download artifact")
-            print("3. List artifacts")
-            print("4. Show my info")
-            if system.current_user.role == UserRole.ADMIN:
-                print("5. Create user")
+            
+            # Show options based on role
+            menu_options = []
+            option_num = 1  # Start with 1 and increment for each option
+            
+            # Upload option only for admin and owner
             if system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                print("6. Delete artifact")
-            print("7. Logout")
-            print("8. Exit")
+                menu_options.append((str(option_num), "Upload artifact"))
+                option_num += 1
             
-            choice = input("\nEnter your choice: ")
+            # Common options for all roles
+            menu_options.append((str(option_num), "Download artifact"))
+            option_num += 1
+            menu_options.append((str(option_num), "List artifacts"))
+            option_num += 1
+            menu_options.append((str(option_num), "Show my info"))
+            option_num += 1
             
-            if choice == "1":
-                system.upload_artifact()
-            elif choice == "2":
-                system.download_artifact()
-            elif choice == "3":
-                system.list_artifacts()
-            elif choice == "4":
-                system.show_user_info()
-            elif choice == "5" and system.current_user.role == UserRole.ADMIN:
-                system.create_user_menu()
-            elif choice == "6" and system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                system.delete_artifact()
-            elif choice == "7":
-                system.logout()
-            elif choice == "8":
-                print("\nGoodbye!")
-                break
-            else:
-                print("Invalid choice. Please try again.")
+            # Admin-specific options
+            if system.current_user.role == UserRole.ADMIN:
+                menu_options.append((str(option_num), "Create user"))
+                option_num += 1
+            
+            # Admin and owner options
+            if system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
+                menu_options.append((str(option_num), "Delete artifact"))
+                option_num += 1
+            
+            menu_options.append((str(option_num), "Logout"))
+            option_num += 1
+            menu_options.append((str(option_num), "Exit"))
+            
+            # Display menu
+            for option, text in menu_options:
+                print(f"{option}. {text}")
+            
+            try:
+                max_choice = str(len(menu_options))
+                choice = input(f"Enter your choice (1-{max_choice}): ")
+                
+                # Map the user's choice to the corresponding option
+                valid_choice = False
+                for option, text in menu_options:
+                    if choice == option:
+                        valid_choice = True
+                        if text == "Upload artifact":
+                            system.upload_artifact()
+                        elif text == "Download artifact":
+                            system.download_artifact()
+                        elif text == "List artifacts":
+                            system.list_artifacts()
+                        elif text == "Show my info":
+                            system.show_user_info()
+                        elif text == "Create user":
+                            system.create_user_menu()
+                        elif text == "Delete artifact":
+                            system.delete_artifact()
+                        elif text == "Logout":
+                            system.logout()
+                        elif text == "Exit":
+                            print("\nGoodbye!")
+                            return
+                        break
+                
+                if not valid_choice:
+                    print("Invalid choice. Please try again.")
+            except Exception as e:
+                print(f"Error: {e}")
 
 if __name__ == "__main__":
     main() 

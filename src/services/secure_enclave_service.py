@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from datetime import datetime
 from ..models.user import User, UserRole
 from ..auth.rbac import RBACManager, Permission
@@ -10,6 +10,7 @@ from ..utils.checksum import generate_checksum
 import os
 import uuid
 import hashlib
+import sqlite3
 
 # Design Pattern: Facade Pattern
 # The SecureEnclaveService acts as a facade, providing a simplified interface
@@ -140,16 +141,17 @@ class SecureEnclaveService:
                 print(f"Database storage error: {str(e)}")
                 return None
 
-            # Add artifact to owner's list
-            if not self.rbac.add_artifact_to_owner(user.id, artifact_id):
-                print(f"Failed to add artifact {artifact_id} to owner {user.id}")
-                # Cleanup: remove artifact from storage
-                try:
-                    self.db.delete(artifact_id, 'artifacts')
-                    print(f"Cleaned up artifact {artifact_id} from database")
-                except Exception as e:
-                    print(f"Cleanup error for artifact {artifact_id}: {str(e)}")
-                return None
+            # Add artifact to owner's list only if user is an owner
+            if user.role == UserRole.OWNER:
+                if not self.rbac.add_artifact_to_owner(user.id, artifact_id):
+                    print(f"Failed to add artifact {artifact_id} to owner {user.id}")
+                    # Cleanup: remove artifact from storage
+                    try:
+                        self.db.delete(artifact_id, 'artifacts')
+                        print(f"Cleaned up artifact {artifact_id} from database")
+                    except Exception as e:
+                        print(f"Cleanup error for artifact {artifact_id}: {str(e)}")
+                    return None
 
             print(f"Successfully completed upload process for artifact {artifact_id}")
             return artifact_id
@@ -215,6 +217,113 @@ class SecureEnclaveService:
                     "artifact_id": artifact_id,
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
+                },
+                "failure"
+            )
+            return None
+
+    def list_artifacts(self, user: User) -> List[Dict[str, Any]]:
+        """List all artifacts the user has access to"""
+        try:
+            # Check if user has LIST permission
+            if not self.rbac.check_permission(user, Permission.LIST):
+                self.logger.log_event(
+                    "list_artifacts",
+                    user.id,
+                    {"status": "denied"},
+                    "failure"
+                )
+                return []
+
+            # Get all artifacts from database
+            artifacts = self.db.list("artifacts")
+
+            # Filter based on user role
+            if user.role == UserRole.OWNER:
+                artifacts = [a for a in artifacts if a["owner_id"] == user.id]
+
+            # Remove sensitive information for non-admin users
+            if user.role != UserRole.ADMIN:
+                for artifact in artifacts:
+                    artifact.pop("encryption_key_id", None)
+                    artifact.pop("encrypted_content", None)
+
+            # Log successful listing
+            self.logger.log_event(
+                "list_artifacts",
+                user.id,
+                {"count": len(artifacts)}
+            )
+
+            return artifacts
+
+        except Exception as e:
+            self.logger.log_event(
+                "list_artifacts",
+                user.id,
+                {"error": str(e)},
+                "failure"
+            )
+            return []
+
+    def read_artifact(self, user: User, artifact_id: str) -> Optional[bytes]:
+        """Read and decrypt an artifact's content"""
+        try:
+            # Get artifact metadata
+            artifact = self.db.read(artifact_id, "artifacts")
+            if not artifact:
+                print("Artifact not found")
+                return None
+
+            # Check permissions
+            if not self.rbac.check_permission(user, Permission.READ, artifact_id):
+                print("Permission denied")
+                return None
+
+            # Get encrypted content directly from database
+            encrypted_content = artifact.get("encrypted_content")
+            if not encrypted_content:
+                print("No content found")
+                return None
+
+            # Get encryption key and decrypt
+            key_id = artifact.get("encryption_key_id")
+            if not key_id:
+                print("No encryption key found")
+                return None
+
+            # Decrypt the content
+            decrypted_content = self.file_encryption.decrypt(encrypted_content, key_id)
+            if not decrypted_content:
+                print("Decryption failed")
+                return None
+
+            # Verify checksum
+            if generate_checksum(decrypted_content) != artifact["checksum"]:
+                print("Checksum verification failed")
+                return None
+
+            # Log successful read
+            self.logger.log_event(
+                "read_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "content_type": artifact["content_type"],
+                    "file_size": len(decrypted_content)
+                }
+            )
+
+            return decrypted_content
+
+        except Exception as e:
+            print(f"Error reading artifact: {str(e)}")
+            self.logger.log_event(
+                "read_artifact",
+                user.id,
+                {
+                    "artifact_id": artifact_id,
+                    "error": str(e)
                 },
                 "failure"
             )
