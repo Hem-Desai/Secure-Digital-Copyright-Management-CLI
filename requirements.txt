@@ -2,11 +2,10 @@
 click>=8.0.3
 bcrypt==3.2.2
 cryptography>=36.0.1
-pathlib>=1.0.1
 
 # Development and testing
 pytest>=7.0.0
-pytest-cov>=3.0.0  # For test coverage
+pytest-cov>=3.0.0
 black>=22.3.0
 flake8>=4.0.1
 bandit>=1.7.5
@@ -17,5 +16,5 @@ mypy>=0.950
 types-cryptography>=0.1.0
 
 # Security
-python-dotenv>=0.19.0  # For environment variables
-pycryptodome>=3.15.0  # Additional cryptographic functions 
+python-dotenv>=0.19.0
+pycryptodome>=3.15.0 
