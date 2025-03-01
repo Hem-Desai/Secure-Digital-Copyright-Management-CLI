@@ -84,7 +84,7 @@ The system comes with three default users:
 Run the application:
 
 ```bash
-python -m src.main
+python -m src.main or python -m main
 ```
 
 ### Main Menu
