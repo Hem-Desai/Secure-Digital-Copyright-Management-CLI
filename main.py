@@ -1,4 +1,5 @@
-from src.cli import main
+from src.cli import CLI
 
 if __name__ == "__main__":
-    main() 
+    cli = CLI()
+    cli.show_main_menu() 

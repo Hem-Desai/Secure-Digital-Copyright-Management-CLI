@@ -335,18 +335,15 @@ def main():
         if not system.current_user:
             print("\nDigital Copyright Management System")
             print("==================================")
-            print("1. Create new account")
-            print("2. Login")
-            print("3. Exit")
+            print("1. Login")
+            print("2. Exit")
             
             try:
-                choice = input("\nEnter your choice (1-3): ")
+                choice = input("\nEnter your choice (1-2): ")
                 
                 if choice == "1":
-                    system.create_user_menu()
-                elif choice == "2":
                     system.login_menu()
-                elif choice == "3":
+                elif choice == "2":
                     print("\nGoodbye!")
                     break
                 else:
@@ -358,7 +355,12 @@ def main():
             
             # Show options based on role
             menu_options = []
-            option_num = 1  # Start with 1 and increment for each option
+            option_num = 1
+            
+            # Admin-specific options
+            if system.current_user.role == UserRole.ADMIN:
+                menu_options.append((str(option_num), "Create user"))
+                option_num += 1
             
             # Upload option only for admin and owner
             if system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
@@ -372,11 +374,6 @@ def main():
             option_num += 1
             menu_options.append((str(option_num), "Show my info"))
             option_num += 1
-            
-            # Admin-specific options
-            if system.current_user.role == UserRole.ADMIN:
-                menu_options.append((str(option_num), "Create user"))
-                option_num += 1
             
             # Admin and owner options
             if system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:

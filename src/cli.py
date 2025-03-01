@@ -207,16 +207,14 @@ class CLI:
             print("\nDigital Copyright Management System")
             print("==================================")
             if not self.current_user:
-                print("1. Create new account")
-                print("2. Login")
-                print("3. Exit")
+                print("1. Login")
+                print("2. Exit")
                 try:
-                    choice = input("Enter your choice (1-3): ")
+                    choice = input("Enter your choice (1-2): ")
                     if choice == "1":
-                        self.create_user_menu()
+                        if self.login():  # Call login directly
+                            self.show_user_menu()
                     elif choice == "2":
-                        self.login_menu()
-                    elif choice == "3":
                         print("Goodbye!")
                         break
                     else:
@@ -230,12 +228,19 @@ class CLI:
         """Display user menu based on role"""
         while True:
             print(f"\nWelcome {self.current_user.username}!")
+            print("\nAvailable Actions:")
             
-            # Initialize menu options list
             menu_options = []
-            option_number = 1  # Start with 1 and increment sequentially
+            option_number = 1
             
-            # Add options based on role
+            # Admin-specific options
+            if self.current_user.role == UserRole.ADMIN:
+                menu_options.append((str(option_number), "Create new user"))
+                option_number += 1
+                menu_options.append((str(option_number), "Manage users"))
+                option_number += 1
+            
+            # Owner/Admin options
             if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
                 menu_options.append((str(option_number), "Upload artifact"))
                 option_number += 1
@@ -243,62 +248,39 @@ class CLI:
             # Common options for all roles
             menu_options.append((str(option_number), "Download artifact"))
             option_number += 1
-            
             menu_options.append((str(option_number), "List artifacts"))
             option_number += 1
-            
             menu_options.append((str(option_number), "Show my info"))
             option_number += 1
-            
-            # Admin-specific options
-            if self.current_user.role == UserRole.ADMIN:
-                menu_options.append((str(option_number), "Create user"))
-                option_number += 1
-            
-            # Admin and owner options
-            if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                menu_options.append((str(option_number), "Delete artifact"))
-                option_number += 1
-            
             menu_options.append((str(option_number), "Logout"))
-            option_number += 1
             
-            menu_options.append((str(option_number), "Exit"))
+            # Display menu options
+            for option, text in menu_options:
+                print(f"{option}. {text}")
             
-            # Display menu
-            for number, text in menu_options:
-                print(f"{number}. {text}")
-
             try:
-                choice = input(f"Enter your choice (1-{len(menu_options)}): ")
+                choice = input(f"\nEnter your choice (1-{len(menu_options)}): ")
+                if choice not in [opt[0] for opt in menu_options]:
+                    print("Invalid choice. Please try again.")
+                    continue
                 
-                # Find the selected option
-                selected_option = None
-                for number, text in menu_options:
-                    if choice == number:
-                        selected_option = text
-                        break
+                selected_action = menu_options[int(choice)-1][1]
                 
-                if selected_option == "Upload artifact" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                    self.upload_menu()
-                elif selected_option == "Download artifact":
-                    self.download_menu()
-                elif selected_option == "List artifacts":
-                    self.list_artifacts()
-                elif selected_option == "Show my info":
-                    self.show_user_info()
-                elif selected_option == "Create user" and self.current_user.role == UserRole.ADMIN:
+                if selected_action == "Create new user":
                     self.create_user_menu()
-                elif selected_option == "Delete artifact" and self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
-                    self.delete_artifact_menu()
-                elif selected_option == "Logout":
+                elif selected_action == "Manage users":
+                    self.manage_users_menu()
+                elif selected_action == "Upload artifact":
+                    self.upload_artifact()
+                elif selected_action == "Download artifact":
+                    self.download_artifact()
+                elif selected_action == "List artifacts":
+                    self.list_artifacts()
+                elif selected_action == "Show my info":
+                    self.show_user_info()
+                elif selected_action == "Logout":
                     self.logout()
                     break
-                elif selected_option == "Exit":
-                    print("Goodbye!")
-                    return False
-                else:
-                    print("Invalid choice. Please try again.")
             except Exception as e:
                 print(f"Error: {e}")
 
@@ -483,7 +465,8 @@ class CLI:
 @click.pass_context
 def main(ctx):
     """Secure Digital Copyright Management System"""
-    ctx.obj = CLI()
+    cli = CLI()
+    cli.show_main_menu()
 
 @main.command()
 @click.argument("username")
