@@ -362,14 +362,14 @@ def main():
                 menu_options.append((str(option_num), "Create user"))
                 option_num += 1
             
-            # Upload option only for admin and owner
+            # Upload and download options only for admin and owner
             if system.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
                 menu_options.append((str(option_num), "Upload artifact"))
                 option_num += 1
+                menu_options.append((str(option_num), "Download artifact"))
+                option_num += 1
             
             # Common options for all roles
-            menu_options.append((str(option_num), "Download artifact"))
-            option_num += 1
             menu_options.append((str(option_num), "List artifacts"))
             option_num += 1
             menu_options.append((str(option_num), "Show my info"))
@@ -400,7 +400,10 @@ def main():
                         if text == "Upload artifact":
                             system.upload_artifact()
                         elif text == "Download artifact":
-                            system.download_artifact()
+                            if system.current_user.role == UserRole.VIEWER:
+                                print("Error: Viewers do not have permission to download artifacts")
+                            else:
+                                system.download_artifact()
                         elif text == "List artifacts":
                             system.list_artifacts()
                         elif text == "Show my info":

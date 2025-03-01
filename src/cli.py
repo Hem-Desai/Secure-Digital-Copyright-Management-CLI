@@ -244,10 +244,10 @@ class CLI:
             if self.current_user.role in [UserRole.ADMIN, UserRole.OWNER]:
                 menu_options.append((str(option_number), "Upload artifact"))
                 option_number += 1
+                menu_options.append((str(option_number), "Download artifact"))
+                option_number += 1
             
             # Common options for all roles
-            menu_options.append((str(option_number), "Download artifact"))
-            option_number += 1
             menu_options.append((str(option_number), "List artifacts"))
             option_number += 1
             menu_options.append((str(option_number), "Show my info"))
@@ -378,14 +378,23 @@ class CLI:
         except Exception as e:
             print(f"Error uploading file: {e}")
 
-    def download_menu(self):
-        """Handle artifact download interactively"""
+    def download_artifact(self):
+        """Handle artifact download"""
+        if not self.current_user:
+            print("Please login first")
+            return
+
+        # Check if user has download permissions
+        if self.current_user.role == UserRole.VIEWER:
+            print("Error: Viewers do not have permission to download artifacts")
+            return
+
         print("\nDownload Artifact")
         print("================")
         artifact_id = input("Enter artifact ID: ")
         output_path = input("Enter output path: ")
         
-        content = self.secure_enclave.read_artifact(self.current_user, artifact_id)
+        content = self.secure_enclave.handle_download_request(self.current_user, artifact_id)
         if content:
             try:
                 with open(output_path, 'wb') as f:
