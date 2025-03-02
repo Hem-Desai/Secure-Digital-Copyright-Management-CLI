@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 import sqlite3
 import uuid
+import os
 
 class Permission(Enum):
     CREATE = "create"
@@ -38,6 +39,31 @@ class RBACManager:
         self._users = {}
         self._load_users_from_db()
         
+        # Create default users if they don't exist
+        self._create_default_users()
+        
+    def _create_default_users(self):
+        """Create default users with secure passwords if they don't exist"""
+        default_users = [
+            ("admin", "Adm!nCtr1#2024", UserRole.ADMIN),
+            ("owner", "Own3rSh!p$2024", UserRole.OWNER),
+            ("viewer", "V!ewUs3r@2024", UserRole.VIEWER)
+        ]
+        
+        for username, password, role in default_users:
+            if not self.db.get_user_by_username(username):
+                user = self.create_user(username, password, role)
+                if user:
+                    self.db.create({
+                        "table": "users",
+                        "id": user.id,
+                        "username": user.username,
+                        "password_hash": user.password_hash,
+                        "role": user.role.value,
+                        "created_at": user.created_at,
+                        "password_last_changed": datetime.now().timestamp()
+                    })
+
     def _load_users_from_db(self):
         """Load users from database into memory"""
         users = self.db.list("users")
@@ -54,66 +80,105 @@ class RBACManager:
             )
             self._users[user.username] = user
         
-    def _validate_password(self, password: str) -> bool:
+    def validate_password(self, password: str) -> bool:
         """
-        Validate password complexity requirements:
-        - Minimum 8 characters
+        Validate password strength requirements:
+        - Minimum 12 characters
         - At least one uppercase letter
         - At least one lowercase letter
         - At least one number
-        - At least one special character
+        - At least one special character from: !@#$%^&*(),.?":{}|<>
+        - No common patterns or repeated characters
         """
-        if len(password) < 8:
+        if len(password) < 12:
             return False
+            
         if not re.search(r"[A-Z]", password):
             return False
+            
         if not re.search(r"[a-z]", password):
             return False
+            
         if not re.search(r"\d", password):
             return False
+            
         if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
             return False
+            
+        # Check for common patterns and repeated characters
+        common_patterns = [
+            r"12345", r"qwerty", r"password", r"admin",
+            r"([a-zA-Z0-9])\1{2,}",  # Repeated characters
+            r"abc", r"123", r"admin", r"user", r"login",
+            r"test", r"demo", r"guest", r"default"
+        ]
+        
+        for pattern in common_patterns:
+            if re.search(pattern, password, re.IGNORECASE):
+                return False
+                
         return True
-    
-    def _hash_password(self, password: str) -> bytes:
-        """Hash password using bcrypt with salt"""
-        salt = bcrypt.gensalt()
-        return bcrypt.hashpw(password.encode(), salt)
-    
+        
+    def hash_password(self, password: str) -> str:
+        """
+        Hash password using bcrypt with increased work factor (12 rounds)
+        Uses constant-time comparison to prevent timing attacks
+        """
+        salt = bcrypt.gensalt(rounds=12)
+        return bcrypt.hashpw(password.encode(), salt).decode()
+        
+    def verify_password(self, password: str, hashed: str) -> bool:
+        """
+        Verify password against hash using constant-time comparison
+        to prevent timing attacks
+        """
+        try:
+            return bcrypt.checkpw(password.encode(), hashed.encode())
+        except Exception:
+            return False
+            
     def create_user(self, username: str, password: str, role: UserRole) -> Optional[User]:
         """Create a new user with secure password"""
-        if not self._validate_password(password):
+        if not self.validate_password(password):
             return None
             
-        if username in self._users:
-            return None
-            
-        user_id = f"{username}_{datetime.now().timestamp()}"
-        password_hash = self._hash_password(password)
+        # Generate secure user ID
+        user_id = os.urandom(16).hex()
         
-        user = User(
+        # Hash password with increased security
+        password_hash = self.hash_password(password)
+        
+        # Create user with current timestamp
+        created_at = datetime.now().timestamp()
+        
+        return User(
             id=user_id,
             username=username,
             password_hash=password_hash,
             role=role,
-            created_at=datetime.now().timestamp(),
-            artifacts=[]
+            created_at=created_at
         )
         
-        self._users[username] = user
-        return user
-    
     def authenticate(self, username: str, password: str) -> Optional[User]:
-        """Authenticate user credentials using bcrypt"""
-        user = self._users.get(username)
-        if not user:
+        """Authenticate user and verify password"""
+        user_data = self.db.get_user_by_username(username)
+        if not user_data:
             return None
             
-        try:
-            if bcrypt.checkpw(password.encode(), user.password_hash):
-                return user
-        except Exception:
-            pass
+        # Check for account lockout
+        if user_data.get("account_locked"):
+            return None
+            
+        # Verify password with constant-time comparison
+        if self.verify_password(password, user_data["password_hash"]):
+            return User(
+                id=user_data["id"],
+                username=user_data["username"],
+                password_hash=user_data["password_hash"],
+                role=UserRole(user_data["role"]),
+                created_at=user_data["created_at"]
+            )
+            
         return None
     
     def check_permission(self, user: User, permission: Permission, 

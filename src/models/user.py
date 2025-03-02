@@ -1,6 +1,6 @@
 from enum import Enum
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 class UserRole(Enum):
     ADMIN = "admin"
@@ -11,12 +11,17 @@ class UserRole(Enum):
 class User:
     id: str
     username: str
-    password_hash: bytes  # Changed from str to bytes for bcrypt hash
+    password_hash: str  # Store as string since we decode after hashing
     role: UserRole
     created_at: float
-    artifacts: List[str]  # List of artifact IDs owned by user
+    artifacts: Optional[List[str]] = None  # List of artifact IDs owned by user
     failed_login_attempts: int = 0  # Track failed login attempts
     last_login_attempt: float = 0  # Track time of last login attempt
+    
+    def __post_init__(self):
+        """Initialize optional fields"""
+        if self.artifacts is None:
+            self.artifacts = []
     
     def has_permission(self, action: str, resource: str) -> bool:
         """

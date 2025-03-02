@@ -94,7 +94,12 @@ class CLI:
             print("Please wait before trying again")
             return False
             
-        password = getpass.getpass("Password: ")
+        try:
+            password = getpass.getpass("Password: ")
+        except:
+            # Fallback to regular input if getpass fails
+            password = input("Password: ")
+            
         if not password:
             print("Password cannot be empty")
             return False

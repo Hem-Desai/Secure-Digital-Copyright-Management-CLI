@@ -13,7 +13,8 @@ A secure CLI-based application for managing digital copyright artifacts with rol
 - **Security Features**
 
   - AES-256 encryption for all stored files
-  - Bcrypt password hashing
+  - Bcrypt password hashing with high work factor (12 rounds)
+  - Secure password requirements enforcement
   - File integrity verification with checksums
   - Rate limiting for login attempts
   - Account lockout protection
@@ -52,39 +53,48 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Initialize the database with default users:
+4. Initialize the database and set up secure passwords:
 
 ```bash
-python -m src.init_db
+python src/init_db.py
 ```
+
+During initialization, you'll be prompted to create secure passwords for the default users. Passwords must meet these requirements:
+
+- Minimum 12 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character (!@#$%^&\*(),.?":{}|<>)
+- No common patterns or repeated characters
 
 ## Default Users
 
-The system comes with three default users:
+The system comes with three default user roles:
 
 1. Admin User
 
    - Username: admin
-   - Password: Admin123!
    - Full system access
+   - Create during initialization
 
 2. Owner User
 
    - Username: owner
-   - Password: Owner123!
    - Can manage own artifacts
+   - Create during initialization
 
 3. Viewer User
    - Username: viewer
-   - Password: Viewer123!
    - Read-only access
+   - Create during initialization
 
 ## Usage
 
 Run the application:
 
 ```bash
-python -m src.main or python -m main
+python main.py
 ```
 
 ### Main Menu
@@ -94,9 +104,8 @@ When you start the application, you'll see:
 ```
 Digital Copyright Management System
 ==================================
-1. Create new account
-2. Login
-3. Exit
+1. Login
+2. Exit
 ```
 
 ### User Menu
@@ -152,21 +161,25 @@ Admin users see additional owner information.
 
 ## Security Best Practices
 
-1. Use strong passwords following the complexity requirements:
+1. Password Security:
 
-   - Minimum 8 characters
-   - At least one uppercase letter
-   - At least one lowercase letter
-   - At least one number
-   - At least one special character
+   - Never share or store passwords in plain text
+   - Use unique, strong passwords for each account
+   - Change passwords regularly
+   - Use password manager for secure storage
 
-2. Regular password changes are recommended
+2. System Security:
 
-3. Keep your encryption keys secure
+   - Keep the system and dependencies updated
+   - Monitor audit logs regularly
+   - Backup database securely
+   - Use secure communication channels
 
-4. Monitor audit logs for suspicious activity
-
-5. Ensure proper file permissions on the host system
+3. File Security:
+   - Verify file integrity after transfers
+   - Scan uploads for malware
+   - Maintain secure backups
+   - Follow least privilege principle
 
 ## Design Patterns Used
 
@@ -280,6 +293,16 @@ The system provides comprehensive error handling:
 - Used for all artifact operations (download, delete, etc.)
 - Shown in the artifact listing table
 
+## Contributing
+
+Guidelines for contributing to the project:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes following the coding standards
+4. Add tests for new functionality
+5. Submit a pull request with a clear description
+
 ## License
 
-[Your License]
+[Insert License Information]

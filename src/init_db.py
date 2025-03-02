@@ -1,85 +1,111 @@
-from datetime import datetime
+import sqlite3
+import os
+import sys
 import bcrypt
-from src.storage.db_storage import SQLiteStorage
-from src.models.user import UserRole
+import time
+import uuid
+import getpass
 
-def init_database():
-    """Initialize database with default users"""
-    db = SQLiteStorage()
-    
-    # Create default admin user
-    admin_password = "Admin123!"
-    admin_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt())
-    
-    admin_user = {
-        "table": "users",
-        "id": "admin_default",
-        "username": "admin",
-        "password_hash": admin_hash,
-        "role": UserRole.ADMIN.value,
-        "created_at": datetime.utcnow().timestamp(),
-        "password_last_changed": datetime.utcnow().timestamp(),
-        "failed_login_attempts": 0,
-        "last_login_attempt": 0,
-        "account_locked": False
-    }
-    
-    # Create default owner user
-    owner_password = "Owner123!"
-    owner_hash = bcrypt.hashpw(owner_password.encode(), bcrypt.gensalt())
-    
-    owner_user = {
-        "table": "users",
-        "id": "owner_default",
-        "username": "owner",
-        "password_hash": owner_hash,
-        "role": UserRole.OWNER.value,
-        "created_at": datetime.utcnow().timestamp(),
-        "password_last_changed": datetime.utcnow().timestamp(),
-        "failed_login_attempts": 0,
-        "last_login_attempt": 0,
-        "account_locked": False
-    }
-    
-    # Create default viewer user
-    viewer_password = "Viewer123!"
-    viewer_hash = bcrypt.hashpw(viewer_password.encode(), bcrypt.gensalt())
-    
-    viewer_user = {
-        "table": "users",
-        "id": "viewer_default",
-        "username": "viewer",
-        "password_hash": viewer_hash,
-        "role": UserRole.VIEWER.value,
-        "created_at": datetime.utcnow().timestamp(),
-        "password_last_changed": datetime.utcnow().timestamp(),
-        "failed_login_attempts": 0,
-        "last_login_attempt": 0,
-        "account_locked": False
-    }
-    
-    # Create users in database
-    try:
-        db.create(admin_user)
-        print("Created admin user")
-        db.create(owner_user)
-        print("Created owner user")
-        db.create(viewer_user)
-        print("Created viewer user")
-        print("\nDefault users created successfully!")
-        print("\nDefault Credentials:")
-        print("-------------------")
-        print("Admin User:")
-        print(f"Username: admin")
-        print(f"Password: {admin_password}")
-        print("\nOwner User:")
-        print(f"Username: owner")
-        print(f"Password: {owner_password}")
-        print("\nViewer User:")
-        print(f"Username: viewer")
-        print(f"Password: {viewer_password}")
-    except Exception as e:
-        print(f"Error creating default users: {e}")
+# Add project root to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if __name__ == "__main__":
-    init_database() 
+from src.models.user import User, UserRole
+
+def init_db():
+    # Create database directory if it doesn't exist
+    os.makedirs('data', exist_ok=True)
+    
+    # Connect to database
+    conn = sqlite3.connect('data/users.db')
+    c = conn.cursor()
+    
+    # Drop existing tables
+    c.execute('DROP TABLE IF EXISTS users')
+    
+    # Create users table
+    c.execute('''
+    CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL,
+        created_at REAL NOT NULL,
+        artifacts TEXT,
+        failed_login_attempts INTEGER DEFAULT 0,
+        last_login_attempt REAL DEFAULT 0
+    )
+    ''')
+    
+    # Create default users
+    default_users = [
+        ('admin', UserRole.ADMIN),
+        ('owner', UserRole.OWNER),
+        ('viewer', UserRole.VIEWER)
+    ]
+    
+    for username, role in default_users:
+        print(f"\nCreating {role.value} user: {username}")
+        while True:
+            password = getpass.getpass(f"Enter password for {username}: ")
+            if len(password) < 12:
+                print("Password must be at least 12 characters long")
+                continue
+            if not any(c.isupper() for c in password):
+                print("Password must contain at least one uppercase letter")
+                continue
+            if not any(c.islower() for c in password):
+                print("Password must contain at least one lowercase letter")
+                continue
+            if not any(c.isdigit() for c in password):
+                print("Password must contain at least one number")
+                continue
+            if not any(c in "!@#$%^&*(),.?\":{}|<>" for c in password):
+                print("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
+                continue
+            confirm = getpass.getpass("Confirm password: ")
+            if password != confirm:
+                print("Passwords do not match")
+                continue
+            break
+        
+        # Hash password
+        password_bytes = password.encode('utf-8')
+        salt = bcrypt.gensalt(rounds=12)  # Increased rounds for better security
+        password_hash = bcrypt.hashpw(password_bytes, salt)
+        
+        # Create user
+        user = User(
+            id=str(uuid.uuid4()),
+            username=username,
+            password_hash=password_hash.decode('utf-8'),
+            role=role,
+            created_at=time.time(),
+            artifacts=[],
+            failed_login_attempts=0,
+            last_login_attempt=0
+        )
+        
+        # Insert into database
+        c.execute('''
+        INSERT INTO users (id, username, password_hash, role, created_at, artifacts, 
+                         failed_login_attempts, last_login_attempt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user.id,
+            user.username,
+            user.password_hash,
+            user.role.value,
+            user.created_at,
+            ','.join(user.artifacts),
+            user.failed_login_attempts,
+            user.last_login_attempt
+        ))
+        
+        print(f"Created {role.value} user: {username}")
+    
+    conn.commit()
+    conn.close()
+    print("\nDatabase initialized successfully!")
+
+if __name__ == '__main__':
+    init_db() 
