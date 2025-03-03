@@ -73,3 +73,21 @@
 2025-03-02 19:23:13,080 - INFO - {"timestamp": "2025-03-02T19:23:13.080130", "event_type": "list_artifacts", "user_id": "owner_default", "status": "success", "details": {"count": 0}}
 2025-03-02 20:31:04,534 - INFO - {"timestamp": "2025-03-02T20:31:04.534221", "event_type": "authentication", "user_id": "owner", "status": "failure", "details": {"ip_address": "127.0.0.1", "success": false}}
 2025-03-02 20:31:04,534 - INFO - {"timestamp": "2025-03-02T20:31:04.534221", "event_type": "authentication", "user_id": "owner", "status": "failure", "details": {"ip_address": "127.0.0.1", "success": false}}
+2025-03-03 18:56:49,590 - INFO - {"timestamp": "2025-03-03T18:56:49.590140", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:49,590 - INFO - {"timestamp": "2025-03-03T18:56:49.590140", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:49,591 - INFO - {"timestamp": "2025-03-03T18:56:49.591139", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:49,592 - INFO - {"timestamp": "2025-03-03T18:56:49.592402", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:49,592 - INFO - {"timestamp": "2025-03-03T18:56:49.592402", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:49,593 - INFO - {"timestamp": "2025-03-03T18:56:49.593453", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,716 - INFO - {"timestamp": "2025-03-03T18:56:57.716200", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,716 - INFO - {"timestamp": "2025-03-03T18:56:57.716200", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,717 - INFO - {"timestamp": "2025-03-03T18:56:57.717200", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,718 - INFO - {"timestamp": "2025-03-03T18:56:57.718201", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,718 - INFO - {"timestamp": "2025-03-03T18:56:57.718201", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:56:57,718 - INFO - {"timestamp": "2025-03-03T18:56:57.718201", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,610 - INFO - {"timestamp": "2025-03-03T18:57:24.610244", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,610 - INFO - {"timestamp": "2025-03-03T18:57:24.610244", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,611 - INFO - {"timestamp": "2025-03-03T18:57:24.611771", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,613 - INFO - {"timestamp": "2025-03-03T18:57:24.613313", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,613 - INFO - {"timestamp": "2025-03-03T18:57:24.613313", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}
+2025-03-03 18:57:24,613 - INFO - {"timestamp": "2025-03-03T18:57:24.613313", "event_type": "database_error", "details": {"error": "no such table: user_artifacts"}}

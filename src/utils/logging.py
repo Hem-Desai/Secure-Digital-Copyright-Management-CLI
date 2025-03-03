@@ -3,32 +3,62 @@ import json
 from datetime import datetime
 from typing import Any, Dict
 import os
+import sys
 
 class AuditLogger:
-    def __init__(self, log_dir: str = "logs"):
+    def __init__(self):
+        """Initialize the audit logger"""
         # Create logs directory if it doesn't exist
-        os.makedirs(log_dir, exist_ok=True)
+        os.makedirs('logs', exist_ok=True)
         
-        # Set up system logger
-        self.system_logger = logging.getLogger("system")
-        self.system_logger.setLevel(logging.INFO)
-        system_handler = logging.FileHandler(os.path.join(log_dir, "system.log"))
-        system_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        self.system_logger.addHandler(system_handler)
+        # Configure logging
+        logging.basicConfig(
+            filename='logs/audit.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger('audit')
         
-        # Set up audit logger
-        self.audit_logger = logging.getLogger("audit")
-        self.audit_logger.setLevel(logging.INFO)
-        audit_handler = logging.FileHandler(os.path.join(log_dir, "audit.log"))
-        audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        self.audit_logger.addHandler(audit_handler)
-        
-        # Set up error logger
-        self.error_logger = logging.getLogger("error")
-        self.error_logger.setLevel(logging.ERROR)
-        error_handler = logging.FileHandler(os.path.join(log_dir, "error.log"))
-        error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        self.error_logger.addHandler(error_handler)
+    def log_system_event(self, event_type: str, details: dict):
+        """Log a system event with details"""
+        try:
+            message = {
+                'timestamp': datetime.now().isoformat(),
+                'event_type': event_type,
+                'details': details
+            }
+            self.logger.info(json.dumps(message))
+        except Exception as e:
+            # If logging fails, print to stderr but don't raise
+            print(f"Error logging event: {e}", file=sys.stderr)
+            
+    def log_auth_attempt(self, user_id: str, success: bool, ip_address: str):
+        """Log an authentication attempt"""
+        try:
+            message = {
+                'timestamp': datetime.now().isoformat(),
+                'event_type': 'auth_attempt',
+                'user_id': user_id,
+                'success': success,
+                'ip_address': ip_address
+            }
+            self.logger.info(json.dumps(message))
+        except Exception as e:
+            print(f"Error logging auth attempt: {e}", file=sys.stderr)
+            
+    def log_artifact_access(self, user_id: str, artifact_id: str, action: str):
+        """Log artifact access"""
+        try:
+            message = {
+                'timestamp': datetime.now().isoformat(),
+                'event_type': 'artifact_access',
+                'user_id': user_id,
+                'artifact_id': artifact_id,
+                'action': action
+            }
+            self.logger.info(json.dumps(message))
+        except Exception as e:
+            print(f"Error logging artifact access: {e}", file=sys.stderr)
 
     def log_event(self, 
                   event_type: str, 
@@ -43,7 +73,7 @@ class AuditLogger:
             "status": status,
             "details": details
         }
-        self.audit_logger.info(json.dumps(event))
+        self.logger.info(json.dumps(event))
 
     def log_error(self, error_type: str, error_msg: str, details: Dict[str, Any] = None) -> None:
         """Log an error event"""
@@ -53,16 +83,16 @@ class AuditLogger:
             "error_message": error_msg,
             "details": details or {}
         }
-        self.error_logger.error(json.dumps(error))
+        self.logger.error(json.dumps(error))
 
     def log_system(self, message: str, level: str = "info") -> None:
         """Log a system event"""
         if level.lower() == "error":
-            self.system_logger.error(message)
+            self.logger.error(message)
         elif level.lower() == "warning":
-            self.system_logger.warning(message)
+            self.logger.warning(message)
         else:
-            self.system_logger.info(message)
+            self.logger.info(message)
 
     def log_auth_attempt(self, 
                         user_id: str, 
