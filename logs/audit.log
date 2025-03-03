@@ -71,3 +71,5 @@
 2025-03-02 19:23:09,304 - INFO - {"timestamp": "2025-03-02T19:23:09.304921", "event_type": "authentication", "user_id": "owner", "status": "success", "details": {"ip_address": "127.0.0.1", "success": true}}
 2025-03-02 19:23:13,080 - INFO - {"timestamp": "2025-03-02T19:23:13.080130", "event_type": "list_artifacts", "user_id": "owner_default", "status": "success", "details": {"count": 0}}
 2025-03-02 19:23:13,080 - INFO - {"timestamp": "2025-03-02T19:23:13.080130", "event_type": "list_artifacts", "user_id": "owner_default", "status": "success", "details": {"count": 0}}
+2025-03-02 20:31:04,534 - INFO - {"timestamp": "2025-03-02T20:31:04.534221", "event_type": "authentication", "user_id": "owner", "status": "failure", "details": {"ip_address": "127.0.0.1", "success": false}}
+2025-03-02 20:31:04,534 - INFO - {"timestamp": "2025-03-02T20:31:04.534221", "event_type": "authentication", "user_id": "owner", "status": "failure", "details": {"ip_address": "127.0.0.1", "success": false}}
