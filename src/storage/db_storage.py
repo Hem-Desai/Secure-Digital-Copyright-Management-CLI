@@ -7,93 +7,93 @@ import hashlib
 from ..utils.logging import AuditLogger
 
 class SQLiteStorage:
+    # Define table schemas as class attribute
+    _TABLE_SCHEMAS = {
+        'users': {
+            'columns': ['id', 'username', 'password_hash', 'role', 'created_at', 
+                      'failed_login_attempts', 'last_login_attempt', 'account_locked',
+                      'password_last_changed'],
+            'query': '''CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                failed_login_attempts INTEGER DEFAULT 0,
+                last_login_attempt REAL DEFAULT 0,
+                account_locked BOOLEAN DEFAULT 0,
+                password_last_changed REAL NOT NULL
+            )'''
+        },
+        'artifacts': {
+            'columns': ['id', 'name', 'content_type', 'owner_id', 'file_size',
+                      'created_at', 'encryption_key_id', 'checksum'],
+            'query': '''CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                created_at REAL NOT NULL,
+                encryption_key_id TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                FOREIGN KEY (owner_id) REFERENCES users(id)
+            )'''
+        },
+        'user_artifacts': {
+            'columns': ['id', 'user_id', 'artifact_id'],
+            'query': '''CREATE TABLE IF NOT EXISTS user_artifacts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                artifact_id TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+            )'''
+        },
+        'audit_log': {
+            'columns': ['id', 'timestamp', 'user_id', 'action', 'details', 'ip_address'],
+            'query': '''CREATE TABLE IF NOT EXISTS audit_log (
+                id TEXT PRIMARY KEY,
+                timestamp REAL NOT NULL,
+                user_id TEXT,
+                action TEXT NOT NULL,
+                details TEXT,
+                ip_address TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )'''
+        }
+    }
+
+    # Define static queries as class attribute
+    _STATIC_QUERIES = {
+        'users': {
+            'select_by_id': 'SELECT * FROM users WHERE id = ?',
+            'select_by_username': 'SELECT * FROM users WHERE username = ?',
+            'select_all': 'SELECT * FROM users',
+            'delete': 'DELETE FROM users WHERE id = ?'
+        },
+        'artifacts': {
+            'select_by_id': 'SELECT * FROM artifacts WHERE id = ?',
+            'select_all': 'SELECT * FROM artifacts',
+            'delete': 'DELETE FROM artifacts WHERE id = ?'
+        },
+        'user_artifacts': {
+            'select_by_id': 'SELECT * FROM user_artifacts WHERE id = ?',
+            'select_all': 'SELECT * FROM user_artifacts',
+            'delete': 'DELETE FROM user_artifacts WHERE id = ?'
+        },
+        'audit_log': {
+            'select_by_id': 'SELECT * FROM audit_log WHERE id = ?',
+            'select_all': 'SELECT * FROM audit_log',
+            'delete': 'DELETE FROM audit_log WHERE id = ?'
+        }
+    }
+
     def __init__(self, db_path: str = "data/users.db"):
         """Initialize database connection"""
         self.db_path = db_path
         self.logger = AuditLogger()
         self._ensure_db_exists()
-        
-        # Define valid table schemas
-        self._table_schemas = {
-            'users': {
-                'columns': ['id', 'username', 'password_hash', 'role', 'created_at', 
-                          'failed_login_attempts', 'last_login_attempt', 'account_locked',
-                          'password_last_changed'],
-                'query': '''CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    failed_login_attempts INTEGER DEFAULT 0,
-                    last_login_attempt REAL DEFAULT 0,
-                    account_locked BOOLEAN DEFAULT 0,
-                    password_last_changed REAL NOT NULL
-                )'''
-            },
-            'artifacts': {
-                'columns': ['id', 'name', 'content_type', 'owner_id', 'file_size',
-                          'created_at', 'encryption_key_id', 'checksum'],
-                'query': '''CREATE TABLE IF NOT EXISTS artifacts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    content_type TEXT NOT NULL,
-                    owner_id TEXT NOT NULL,
-                    file_size INTEGER NOT NULL,
-                    created_at REAL NOT NULL,
-                    encryption_key_id TEXT NOT NULL,
-                    checksum TEXT NOT NULL,
-                    FOREIGN KEY (owner_id) REFERENCES users(id)
-                )'''
-            },
-            'user_artifacts': {
-                'columns': ['id', 'user_id', 'artifact_id'],
-                'query': '''CREATE TABLE IF NOT EXISTS user_artifacts (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    artifact_id TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id),
-                    FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
-                )'''
-            },
-            'audit_log': {
-                'columns': ['id', 'timestamp', 'user_id', 'action', 'details', 'ip_address'],
-                'query': '''CREATE TABLE IF NOT EXISTS audit_log (
-                    id TEXT PRIMARY KEY,
-                    timestamp REAL NOT NULL,
-                    user_id TEXT,
-                    action TEXT NOT NULL,
-                    details TEXT,
-                    ip_address TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )'''
-            }
-        }
-        
-        # Define static queries
-        self._static_queries = {
-            'users': {
-                'select_by_id': 'SELECT * FROM users WHERE id = ?',
-                'select_by_username': 'SELECT * FROM users WHERE username = ?',
-                'select_all': 'SELECT * FROM users',
-                'delete': 'DELETE FROM users WHERE id = ?'
-            },
-            'artifacts': {
-                'select_by_id': 'SELECT * FROM artifacts WHERE id = ?',
-                'select_all': 'SELECT * FROM artifacts',
-                'delete': 'DELETE FROM artifacts WHERE id = ?'
-            },
-            'user_artifacts': {
-                'select_by_id': 'SELECT * FROM user_artifacts WHERE id = ?',
-                'select_all': 'SELECT * FROM user_artifacts',
-                'delete': 'DELETE FROM user_artifacts WHERE id = ?'
-            },
-            'audit_log': {
-                'select_by_id': 'SELECT * FROM audit_log WHERE id = ?',
-                'select_all': 'SELECT * FROM audit_log',
-                'delete': 'DELETE FROM audit_log WHERE id = ?'
-            }
-        }
         
     def _ensure_db_exists(self):
         """Ensure database directory and file exist"""
@@ -106,19 +106,19 @@ class SQLiteStorage:
         """Initialize database schema"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            for table_info in self._table_schemas.values():
+            for table_info in self._TABLE_SCHEMAS.values():
                 cursor.execute(table_info['query'])
             conn.commit()
             
     def _validate_table_name(self, table: str) -> bool:
         """Validate table name against schema"""
-        return table in self._table_schemas
+        return table in self._TABLE_SCHEMAS
         
     def _validate_column_names(self, table: str, columns: List[str]) -> bool:
         """Validate column names against schema"""
-        if table not in self._table_schemas:
+        if table not in self._TABLE_SCHEMAS:
             return False
-        valid_columns = set(self._table_schemas[table]['columns'])
+        valid_columns = set(self._TABLE_SCHEMAS[table]['columns'])
         return all(col in valid_columns for col in columns)
         
     def _build_insert_query(self, table: str, columns: List[str]) -> str:
@@ -180,7 +180,7 @@ class SQLiteStorage:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                query = self._static_queries[table]['select_by_id']
+                query = self._STATIC_QUERIES[table]['select_by_id']
                 cursor.execute(query, (id,))
                 row = cursor.fetchone()
                 return dict(row) if row else None
@@ -232,7 +232,7 @@ class SQLiteStorage:
                 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                query = self._static_queries[table]['delete']
+                query = self._STATIC_QUERIES[table]['delete']
                 cursor.execute(query, (id,))
                 conn.commit()
                 return cursor.rowcount > 0
@@ -252,7 +252,7 @@ class SQLiteStorage:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                query = self._static_queries[table]['select_all']
+                query = self._STATIC_QUERIES[table]['select_all']
                 cursor.execute(query)
                 return [dict(row) for row in cursor.fetchall()]
                 
@@ -266,7 +266,7 @@ class SQLiteStorage:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                query = self._static_queries['users']['select_by_username']
+                query = self._STATIC_QUERIES['users']['select_by_username']
                 cursor.execute(query, (username,))
                 row = cursor.fetchone()
                 return dict(row) if row else None

@@ -80,7 +80,7 @@ class RBACManager:
             )
             self._users[user.username] = user
         
-    def validate_password(self, password: str) -> bool:
+    def _validate_password(self, password: str) -> bool:
         """
         Validate password strength requirements:
         - Minimum 12 characters
@@ -139,7 +139,7 @@ class RBACManager:
             
     def create_user(self, username: str, password: str, role: UserRole) -> Optional[User]:
         """Create a new user with secure password"""
-        if not self.validate_password(password):
+        if not self._validate_password(password):
             return None
             
         # Generate secure user ID

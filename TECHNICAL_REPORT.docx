@@ -1,0 +1,339 @@
+# Secure Digital Copyright Management CLI - Technical Report
+
+## Introduction
+The Secure Digital Copyright Management (DCM) CLI is a robust command-line application designed to provide secure management of digital copyright artifacts. The system targets content creators, administrators, and viewers who need to manage and access digital assets while ensuring strong security measures and access controls. Key functionalities include secure file storage, role-based access control, and comprehensive audit logging.
+
+### Key Considerations
+- Security: Implements industry-standard encryption and authentication
+- Performance: Optimized for efficient file handling and user operations
+- Scalability: Modular design supporting future extensions
+- Usability: Intuitive CLI interface with role-specific menus
+
+## Implementation Details & Core Functionality
+
+### User Management
+
+#### Authentication System
+- Secure password handling using bcrypt (12 rounds)
+- Role-based access control (RBAC)
+- Account lockout after failed attempts
+- Rate limiting for login attempts
+- Session management with secure tokens
+
+#### Password Security
+```python
+def validate_password(password: str) -> bool:
+    """
+    Password requirements:
+    - Minimum 12 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character
+    - No common patterns
+    """
+```
+
+### Feature Set & System Capabilities
+
+#### Core Features
+1. Artifact Management
+   - Secure upload/download
+   - File integrity verification
+   - Content type validation
+   - Size limit enforcement (100MB)
+
+2. User Operations
+   - Profile management
+   - Password changes
+   - Session handling
+   - Activity logging
+
+#### Administrative Features
+- User management
+- System monitoring
+- Security audit logs
+- Permission management
+
+### Security Features
+
+#### Authentication & Authorization
+1. Multi-layer Authentication
+   - Password-based authentication
+   - Session token validation
+   - Role verification
+
+2. Authorization Controls
+   - Role-based permissions
+   - Resource-level access checks
+   - Owner verification
+   - Session validation
+
+#### Data Protection
+1. File Security
+   - AES-256 encryption
+   - Checksum verification
+   - Secure storage paths
+   - Access logging
+
+2. Input Validation
+   - Path traversal prevention
+   - Content type verification
+   - Size validation
+   - Character encoding checks
+
+#### Logging & Monitoring
+1. Security Audit Logs
+   - Authentication attempts
+   - File operations
+   - Permission checks
+   - System events
+
+2. Performance Monitoring
+   - Operation timing
+   - Resource usage
+   - Error rates
+   - System health
+
+### Encryption & Data Security
+
+#### Key Management
+```python
+class SecureEnclaveService:
+    def __init__(self):
+        self.file_encryption = AESHandler()
+        self.key_manager = KeyManager()
+```
+
+#### Data Protection
+1. File Encryption
+   - AES-256 in GCM mode
+   - Unique IV per file
+   - Authenticated encryption
+   - Secure key storage
+
+2. Data Transmission
+   - Secure file transfer
+   - Integrity verification
+   - Session encryption
+   - Token-based authentication
+
+### Object-Oriented Design Principles
+
+#### Encapsulation
+- Secure enclave service encapsulating security operations
+- Database abstraction layer
+- File storage management
+
+#### Inheritance
+```python
+class EncryptionStrategy(ABC):
+    @abstractmethod
+    def encrypt(self, data: bytes, key_id: str) -> Optional[bytes]:
+        pass
+```
+
+#### Polymorphism
+- Storage strategies
+- Encryption handlers
+- Authentication methods
+
+#### Abstraction
+- High-level security interfaces
+- Storage abstraction
+- User management facade
+
+### Error Handling & Secure Flow Control
+
+#### Exception Management
+```python
+try:
+    decrypted_data = self.file_encryption.decrypt(
+        encrypted_data,
+        artifact["encryption_key_id"]
+    )
+except Exception:
+    self.logger.log_security_event("decryption_failed")
+    return None
+```
+
+#### Security Controls
+- Input validation
+- Access verification
+- Error logging
+- Secure defaults
+
+### Database Design & Structure
+
+#### Tables
+1. Users
+   - ID (UUID)
+   - Username
+   - Password Hash
+   - Role
+   - Created At
+   - Last Login
+
+2. Artifacts
+   - ID (UUID)
+   - Name
+   - Owner ID
+   - Content Type
+   - Encryption Key ID
+   - Checksum
+   - Created At
+
+3. Audit Logs
+   - ID (UUID)
+   - Event Type
+   - User ID
+   - Timestamp
+   - Details
+
+### Execution Instructions & Prerequisites
+
+#### System Requirements
+- Python 3.8+
+- SQLite 3.35.0+
+- 2GB RAM minimum
+- 500MB disk space
+
+#### Installation Steps
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Initialize database
+python src/init_db.py
+```
+
+### Project Structure
+```
+secure_dcm/
+├── src/
+│   ├── auth/
+│   ├── storage/
+│   ├── encryption/
+│   ├── models/
+│   ├── utils/
+│   └── cli.py
+├── tests/
+└── requirements.txt
+```
+
+### Usage Scenarios
+
+#### End Users
+1. Content Upload
+   ```
+   1. Login with credentials
+   2. Select "Upload artifact"
+   3. Choose file and type
+   4. Confirm upload
+   ```
+
+2. Content Download
+   ```
+   1. Login with credentials
+   2. Select "List artifacts"
+   3. Choose artifact
+   4. Confirm download
+   ```
+
+#### Administrators
+1. User Management
+   ```
+   1. Login as admin
+   2. Select "Create user"
+   3. Set role and permissions
+   4. Confirm creation
+   ```
+
+2. System Monitoring
+   ```
+   1. Login as admin
+   2. View audit logs
+   3. Check system status
+   4. Review security events
+   ```
+
+### Critical Evaluation
+
+#### Strengths
+1. Security
+   - Strong encryption
+   - Secure authentication
+   - Comprehensive logging
+   - Access control
+
+2. Architecture
+   - Modular design
+   - Clean interfaces
+   - Extensible structure
+   - Clear separation
+
+#### Areas for Improvement
+1. Features
+   - Multi-factor authentication
+   - Automated backups
+   - Real-time monitoring
+   - API integration
+
+2. Performance
+   - Caching system
+   - Bulk operations
+   - Async processing
+   - Query optimization
+
+### Mitigated Threats
+
+#### SQL Injection
+```python
+def get_user(self, username: str) -> Optional[Dict]:
+    """Secure parameterized query"""
+    query = "SELECT * FROM users WHERE username = ?"
+    return self.db.execute_query(query, (username,))
+```
+
+#### Data Breaches
+- Encrypted storage
+- Secure key management
+- Access controls
+- Audit logging
+
+#### Insider Threats
+- Role-based access
+- Operation logging
+- Resource tracking
+- Permission checks
+
+### Conclusion
+The Secure Digital Copyright Management CLI system successfully implements a robust security architecture while maintaining usability. The system exceeds industry security standards and provides efficient digital asset management capabilities.
+
+Key achievements:
+1. Strong security implementation
+2. Efficient user management
+3. Comprehensive audit system
+4. Scalable architecture
+5. Clean code structure
+
+### References
+
+1. Security Standards
+   - NIST SP 800-63B
+   - OWASP Top 10 2021
+   - CWE/SANS Top 25
+
+2. Best Practices
+   - Python Security Guide
+   - Cryptography Standards
+   - OWASP Secure Coding
+
+3. Technologies
+   - Python Documentation
+   - SQLite Security
+   - Bcrypt Implementation 
