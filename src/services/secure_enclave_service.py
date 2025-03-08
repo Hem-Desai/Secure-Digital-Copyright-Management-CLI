@@ -85,39 +85,32 @@ class SecureEnclaveService:
     def handle_upload_request(self, user: User, file_path: str, name: str, content_type: str, file_size: int) -> Optional[str]:
         """Handle upload request from a user"""
         try:
-            print(f"Processing upload request for user {user.username} with role {user.role}")
-            
             # Check authorization
             if not self.rbac.check_permission(user, Permission.UPLOAD):
-                print(f"User {user.username} does not have upload permission")
+                print("Permission denied: User does not have upload permission")
                 return None
 
             # Read and encrypt file
             try:
                 with open(file_path, 'rb') as f:
                     content = f.read()
-                print(f"Successfully read file: {file_path}")
             except Exception as e:
-                print(f"Error reading file {file_path}: {str(e)}")
+                print(f"Error reading file: {str(e)}")
                 return None
 
             # Generate encryption key and encrypt content
             try:
                 key_id, _ = self.file_encryption.generate_key()
-                print(f"Generated encryption key: {key_id}")
-                
                 encrypted_content = self.file_encryption.encrypt(content, key_id)
                 if not encrypted_content:
-                    print("Failed to encrypt content - encryption returned None")
+                    print("Error: Failed to encrypt content")
                     return None
-                print("Successfully encrypted content")
             except Exception as e:
                 print(f"Encryption error: {str(e)}")
                 return None
 
             # Create artifact entry
             artifact_id = str(uuid.uuid4())
-            print(f"Generated artifact ID: {artifact_id}")
             
             artifact = {
                 'table': 'artifacts',
@@ -126,38 +119,31 @@ class SecureEnclaveService:
                 'content_type': content_type,
                 'owner_id': user.id,
                 'created_at': datetime.now().timestamp(),
-                'modified_at': datetime.now().timestamp(),
-                'checksum': hashlib.sha256(content).hexdigest(),
-                'encrypted_content': encrypted_content,
                 'encryption_key_id': key_id,
-                'file_size': file_size
+                'checksum': hashlib.sha256(content).hexdigest(),
+                'file_size': file_size,
+                'encrypted_content': encrypted_content
             }
 
             # Store artifact
             try:
-                self.db.create(artifact)
-                print(f"Successfully stored artifact in database")
+                if not self.db.create(artifact):
+                    print("Error: Failed to store artifact in database")
+                    return None
             except Exception as e:
-                print(f"Database storage error: {str(e)}")
+                print(f"Database error: {str(e)}")
                 return None
 
-            # Add artifact to owner's list only if user is an owner
+            # Add artifact to owner's list if user is an owner
             if user.role == UserRole.OWNER:
                 if not self.rbac.add_artifact_to_owner(user.id, artifact_id):
-                    print(f"Failed to add artifact {artifact_id} to owner {user.id}")
-                    # Cleanup: remove artifact from storage
-                    try:
-                        self.db.delete(artifact_id, 'artifacts')
-                        print(f"Cleaned up artifact {artifact_id} from database")
-                    except Exception as e:
-                        print(f"Cleanup error for artifact {artifact_id}: {str(e)}")
-                    return None
-
-            print(f"Successfully completed upload process for artifact {artifact_id}")
+                    print("Warning: Failed to add artifact to owner's list")
+                    # Don't fail the upload if this fails
+                
             return artifact_id
 
         except Exception as e:
-            print(f"Unexpected error in handle_upload_request: {str(e)}")
+            print(f"Error during upload: {str(e)}")
             return None
             
     def handle_download_request(self, user: User, artifact_id: str) -> Optional[bytes]:
@@ -225,6 +211,7 @@ class SecureEnclaveService:
         try:
             # Check if user has LIST permission
             if not self.rbac.check_permission(user, Permission.LIST):
+                print("Permission denied for listing artifacts")
                 self.logger.log_event(
                     "list_artifacts",
                     user.id,
@@ -235,10 +222,16 @@ class SecureEnclaveService:
 
             # Get all artifacts from database
             artifacts = self.db.list("artifacts")
+            
+            if not artifacts:
+                return []
 
             # Filter based on user role
             if user.role == UserRole.OWNER:
+                # For owners, show only their artifacts
                 artifacts = [a for a in artifacts if a["owner_id"] == user.id]
+                # Update the user's artifacts list
+                user.artifacts = [a["id"] for a in artifacts]
 
             # Remove sensitive information for non-admin users
             if user.role != UserRole.ADMIN:
@@ -256,6 +249,7 @@ class SecureEnclaveService:
             return artifacts
 
         except Exception as e:
+            print(f"Error listing artifacts: {str(e)}")
             self.logger.log_event(
                 "list_artifacts",
                 user.id,

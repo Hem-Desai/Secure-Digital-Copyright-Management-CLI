@@ -19,6 +19,10 @@ class Permission(Enum):
 
 class RBACManager:
     def __init__(self):
+        """Initialize RBAC manager"""
+        self._users = {}  # In-memory cache of users
+        self.db_path = 'data/users.db'  # Path to SQLite database
+        
         # Define permission matrix for each role
         self._permissions: Dict[UserRole, List[Permission]] = {
             UserRole.ADMIN: [
@@ -36,7 +40,6 @@ class RBACManager:
         
         # Initialize database connection and load users
         self.db = SQLiteStorage()
-        self._users = {}
         self._load_users_from_db()
         
         # Create default users if they don't exist
@@ -200,12 +203,32 @@ class RBACManager:
             return False
             
         # For OWNER role, check resource ownership if resource_id is provided
+        # Only check ownership for UPDATE and DELETE operations
         if (user.role == UserRole.OWNER and 
             resource_id is not None and 
-            permission not in [Permission.UPLOAD, Permission.LIST] and  # Skip ownership check for UPLOAD and LIST
+            permission in [Permission.UPDATE, Permission.DELETE] and
             resource_id not in user.artifacts):
             print(f"User does not own resource {resource_id}")
             return False
+            
+        # For OWNER role and READ permission, check if they own the resource
+        if (user.role == UserRole.OWNER and 
+            permission == Permission.READ and 
+            resource_id is not None):
+            # Get the artifact from the database
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT owner_id FROM artifacts WHERE id = ?", (resource_id,))
+                result = cursor.fetchone()
+                if result and result[0] == user.id:
+                    print("User owns the resource, granting permission")
+                    return True
+                elif not result:
+                    print("Resource not found")
+                    return False
+                else:
+                    print("User does not own the resource")
+                    return False
             
         print("Permission granted")
         return True
@@ -228,7 +251,7 @@ class RBACManager:
             entry_id = str(uuid.uuid4())
             
             # Add entry to user_artifacts table
-            with sqlite3.connect(self.db.db_path) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO user_artifacts (id, user_id, artifact_id) VALUES (?, ?, ?)",
@@ -259,7 +282,7 @@ class RBACManager:
                 return False
 
             # Remove entry from user_artifacts table
-            with sqlite3.connect(self.db.db_path) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "DELETE FROM user_artifacts WHERE user_id = ? AND artifact_id = ?",

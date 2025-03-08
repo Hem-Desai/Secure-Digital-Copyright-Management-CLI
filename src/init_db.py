@@ -20,7 +20,10 @@ def init_db():
     c = conn.cursor()
     
     # Drop existing tables
+    c.execute('DROP TABLE IF EXISTS user_artifacts')
+    c.execute('DROP TABLE IF EXISTS artifacts')
     c.execute('DROP TABLE IF EXISTS users')
+    c.execute('DROP TABLE IF EXISTS audit_log')
     
     # Create users table
     c.execute('''
@@ -30,9 +33,50 @@ def init_db():
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL,
         created_at REAL NOT NULL,
-        artifacts TEXT,
         failed_login_attempts INTEGER DEFAULT 0,
-        last_login_attempt REAL DEFAULT 0
+        last_login_attempt REAL DEFAULT 0,
+        account_locked BOOLEAN DEFAULT 0,
+        password_last_changed REAL NOT NULL
+    )
+    ''')
+    
+    # Create artifacts table
+    c.execute('''
+    CREATE TABLE artifacts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        created_at REAL NOT NULL,
+        encryption_key_id TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        encrypted_content BLOB NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id)
+    )
+    ''')
+    
+    # Create user_artifacts table
+    c.execute('''
+    CREATE TABLE user_artifacts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+    )
+    ''')
+    
+    # Create audit_log table
+    c.execute('''
+    CREATE TABLE audit_log (
+        id TEXT PRIMARY KEY,
+        timestamp REAL NOT NULL,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        details TEXT,
+        ip_address TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
     )
     ''')
     
@@ -45,60 +89,47 @@ def init_db():
     
     for username, role in default_users:
         print(f"\nCreating {role.value} user: {username}")
-        while True:
-            password = getpass.getpass(f"Enter password for {username}: ")
-            if len(password) < 12:
-                print("Password must be at least 12 characters long")
-                continue
-            if not any(c.isupper() for c in password):
-                print("Password must contain at least one uppercase letter")
-                continue
-            if not any(c.islower() for c in password):
-                print("Password must contain at least one lowercase letter")
-                continue
-            if not any(c.isdigit() for c in password):
-                print("Password must contain at least one number")
-                continue
-            if not any(c in "!@#$%^&*(),.?\":{}|<>" for c in password):
-                print("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
-                continue
-            confirm = getpass.getpass("Confirm password: ")
-            if password != confirm:
-                print("Passwords do not match")
-                continue
-            break
+        password = getpass.getpass(f"Enter password for {username}: ")
+        confirm = getpass.getpass("Confirm password: ")
         
+        if password != confirm:
+            print("Passwords do not match")
+            continue
+            
         # Hash password
-        password_bytes = password.encode('utf-8')
-        salt = bcrypt.gensalt(rounds=12)  # Increased rounds for better security
-        password_hash = bcrypt.hashpw(password_bytes, salt)
+        salt = bcrypt.gensalt()
+        password_hash = bcrypt.hashpw(password.encode(), salt)
         
         # Create user
+        created_at = time.time()
         user = User(
             id=str(uuid.uuid4()),
             username=username,
-            password_hash=password_hash.decode('utf-8'),
+            password_hash=password_hash.decode(),
             role=role,
-            created_at=time.time(),
+            created_at=created_at,
             artifacts=[],
             failed_login_attempts=0,
-            last_login_attempt=0
+            last_login_attempt=0,
+            account_locked=False,
+            password_last_changed=created_at
         )
         
         # Insert into database
         c.execute('''
-        INSERT INTO users (id, username, password_hash, role, created_at, artifacts, 
-                         failed_login_attempts, last_login_attempt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, username, password_hash, role, created_at, failed_login_attempts, 
+                         last_login_attempt, account_locked, password_last_changed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             user.id,
             user.username,
             user.password_hash,
             user.role.value,
             user.created_at,
-            ','.join(user.artifacts),
             user.failed_login_attempts,
-            user.last_login_attempt
+            user.last_login_attempt,
+            user.account_locked,
+            user.password_last_changed
         ))
         
         print(f"Created {role.value} user: {username}")

@@ -27,7 +27,7 @@ class SQLiteStorage:
         },
         'artifacts': {
             'columns': ['id', 'name', 'content_type', 'owner_id', 'file_size',
-                      'created_at', 'encryption_key_id', 'checksum'],
+                      'created_at', 'encryption_key_id', 'checksum', 'encrypted_content'],
             'query': '''CREATE TABLE IF NOT EXISTS artifacts (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -37,6 +37,7 @@ class SQLiteStorage:
                 created_at REAL NOT NULL,
                 encryption_key_id TEXT NOT NULL,
                 checksum TEXT NOT NULL,
+                encrypted_content BLOB NOT NULL,
                 FOREIGN KEY (owner_id) REFERENCES users(id)
             )'''
         },
@@ -248,14 +249,23 @@ class SQLiteStorage:
                 self.logger.log_system_event("security_violation", 
                     {"error": "Invalid table name", "table": table})
                 return []
-                
+
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                query = self._STATIC_QUERIES[table]['select_all']
-                cursor.execute(query)
-                return [dict(row) for row in cursor.fetchall()]
-                
+                if table == 'artifacts':
+                    # For artifacts, select all fields
+                    cursor.execute('''SELECT id, name, content_type, owner_id, file_size, 
+                                    created_at, encryption_key_id, checksum, encrypted_content 
+                                    FROM artifacts''')
+                else:
+                    # For other tables, use the standard select all query
+                    query = self._STATIC_QUERIES[table]['select_all']
+                    cursor.execute(query)
+                    
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+
         except sqlite3.Error as e:
             self.logger.log_system_event("database_error", {"error": str(e)})
             return []

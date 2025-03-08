@@ -17,11 +17,15 @@ class User:
     artifacts: Optional[List[str]] = None  # List of artifact IDs owned by user
     failed_login_attempts: int = 0  # Track failed login attempts
     last_login_attempt: float = 0  # Track time of last login attempt
+    account_locked: bool = False  # Track if account is locked
+    password_last_changed: float = 0  # Track when password was last changed
     
     def __post_init__(self):
         """Initialize optional fields"""
         if self.artifacts is None:
             self.artifacts = []
+        if self.password_last_changed == 0:
+            self.password_last_changed = self.created_at
     
     def has_permission(self, action: str, resource: str) -> bool:
         """

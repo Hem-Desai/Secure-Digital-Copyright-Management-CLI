@@ -5,6 +5,8 @@ import json
 from typing import Optional
 from pathlib import Path
 import os
+import signal
+import atexit
 from datetime import datetime, timedelta
 from src.models.user import User, UserRole
 from src.services.artifact_service import ArtifactService
@@ -25,6 +27,23 @@ class CLI:
         self.secure_enclave = SecureEnclaveService()
         self.current_user: Optional[User] = None
         self._load_session()
+        
+        # Register cleanup handlers
+        atexit.register(self._cleanup)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
+    def _cleanup(self):
+        """Cleanup function to be called on program exit"""
+        if self.current_user:
+            print("\nLogging out due to program termination...")
+            self.logout()
+            
+    def _signal_handler(self, signum, frame):
+        """Handle termination signals"""
+        print("\nReceived termination signal. Cleaning up...")
+        self._cleanup()
+        sys.exit(0)
         
     def _load_session(self):
         """Load user session if exists"""
@@ -135,12 +154,15 @@ class CLI:
             
         user = self.rbac_manager.create_user(username, password, role)
         if not user:
-            print("Failed to create user. Password must meet complexity requirements:")
-            print("- Minimum 8 characters")
+            print("Failed to create user. Password must meet the following requirements:")
+            print("- Minimum 12 characters")
             print("- At least one uppercase letter")
             print("- At least one lowercase letter")
             print("- At least one number")
-            print("- At least one special character")
+            print("- At least one special character (!@#$%^&*(),.?\":{}|<>)")
+            print("- No common patterns (e.g., 12345, qwerty, password)")
+            print("- No repeated characters (3 or more of the same character)")
+            print("- No common words (e.g., admin, user, login, test)")
             return False
             
         # Store user in database
@@ -251,6 +273,8 @@ class CLI:
                 option_number += 1
                 menu_options.append((str(option_number), "Download artifact"))
                 option_number += 1
+                menu_options.append((str(option_number), "Delete artifact"))
+                option_number += 1
             
             # Common options for all roles
             menu_options.append((str(option_number), "List artifacts"))
@@ -279,6 +303,8 @@ class CLI:
                     self.upload_artifact()
                 elif selected_action == "Download artifact":
                     self.download_artifact()
+                elif selected_action == "Delete artifact":
+                    self.delete_artifact_menu()
                 elif selected_action == "List artifacts":
                     self.list_artifacts()
                 elif selected_action == "Show my info":
@@ -328,11 +354,20 @@ class CLI:
         else:
             print("Login failed. Please check your credentials.")
 
-    def upload_menu(self):
-        """Handle artifact upload interactively"""
+    def upload_artifact(self):
+        """Handle artifact upload"""
+        if not self.current_user:
+            print("Please login first")
+            return
+
         print("\nUpload Artifact")
         print("==============")
-        file_path = input("Enter file path: ")
+        print("\nYou can upload files from any location on your system.")
+        print("Examples:")
+        print("  Windows: C:\\Users\\YourName\\Documents\\file.txt")
+        print("  Linux/Mac: /home/username/documents/file.txt")
+        print("\nNote: Use forward slashes (/) or escaped backslashes (\\\\) in the path")
+        file_path = input("\nEnter file path: ")
         name = input("Enter artifact name: ")
         
         print("\nSelect content type:")
@@ -397,29 +432,105 @@ class CLI:
         print("\nDownload Artifact")
         print("================")
         artifact_id = input("Enter artifact ID: ")
-        output_path = input("Enter output path: ")
+        
+        # First get the artifact to get its name
+        artifact = self.db.read(artifact_id, "artifacts")
+        if not artifact:
+            print("Artifact not found")
+            return
+            
+        # Get default filename from artifact name
+        default_filename = artifact["name"]
+        print(f"\nOriginal filename: {default_filename}")
+        
+        # Get output directory
+        print("\nEnter the directory where you want to save the file")
+        print("Example: C:\\Users\\YourName\\Downloads")
+        output_dir = input("Save to directory: ").strip()
+        
+        if not os.path.isdir(output_dir):
+            print("Invalid directory path or directory doesn't exist")
+            return
+            
+        # Get output filename, default to original name
+        print("\nEnter the filename to save as (press Enter to use original name)")
+        output_filename = input(f"Filename [{default_filename}]: ").strip()
+        if not output_filename:
+            output_filename = default_filename
+            
+        # Combine directory and filename
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Confirm if file exists
+        if os.path.exists(output_path):
+            confirm = input(f"\nFile {output_filename} already exists. Overwrite? (y/N): ")
+            if confirm.lower() != 'y':
+                print("Download cancelled")
+                return
         
         content = self.secure_enclave.handle_download_request(self.current_user, artifact_id)
         if content:
             try:
                 with open(output_path, 'wb') as f:
                     f.write(content)
-                print(f"Artifact downloaded successfully to {output_path}")
+                print(f"\nArtifact downloaded successfully to:")
+                print(output_path)
             except Exception as e:
                 print(f"Error saving file: {e}")
+                print("\nPlease ensure you have write permissions to the directory")
+                print("and that the filename is valid for your operating system.")
         else:
             print("Failed to download artifact. Check permissions and artifact ID.")
 
     def delete_artifact_menu(self):
         """Handle artifact deletion interactively"""
+        if not self.current_user:
+            print("Please login first")
+            return
+
+        if self.current_user.role not in [UserRole.ADMIN, UserRole.OWNER]:
+            print("Permission denied: Only admins and owners can delete artifacts")
+            return
+
         print("\nDelete Artifact")
         print("==============")
-        artifact_id = input("Enter artifact ID: ")
         
+        # List available artifacts first
+        artifacts = self.secure_enclave.list_artifacts(self.current_user)
+        if not artifacts:
+            print("No artifacts available to delete")
+            return
+            
+        print("\nAvailable artifacts:")
+        for artifact in artifacts:
+            if self.current_user.role == UserRole.ADMIN:
+                print(f"ID: {artifact['id']} | Name: {artifact['name']} | Owner: {artifact['owner_id']}")
+            elif self.current_user.role == UserRole.OWNER and artifact['owner_id'] == self.current_user.id:
+                print(f"ID: {artifact['id']} | Name: {artifact['name']}")
+        
+        artifact_id = input("\nEnter artifact ID to delete: ")
+        
+        # Verify artifact exists
+        artifact = next((a for a in artifacts if a['id'] == artifact_id), None)
+        if not artifact:
+            print("Invalid artifact ID")
+            return
+            
+        # Check ownership for OWNER role
+        if self.current_user.role == UserRole.OWNER and artifact['owner_id'] != self.current_user.id:
+            print("Permission denied: You can only delete your own artifacts")
+            return
+            
+        # Confirm deletion
+        confirm = input(f"\nAre you sure you want to delete artifact '{artifact['name']}'? (y/N): ")
+        if confirm.lower() != 'y':
+            print("Deletion cancelled")
+            return
+            
         if self.secure_enclave.delete_artifact(self.current_user, artifact_id):
             print("Artifact deleted successfully!")
         else:
-            print("Failed to delete artifact. Check permissions and artifact ID.")
+            print("Failed to delete artifact. Please try again.")
 
     def show_user_info(self):
         """Display current user information"""
@@ -479,8 +590,19 @@ class CLI:
 @click.pass_context
 def main(ctx):
     """Secure Digital Copyright Management System"""
-    cli = CLI()
-    cli.show_main_menu()
+    try:
+        cli = CLI()
+        cli.show_main_menu()
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user. Cleaning up...")
+        if cli:
+            cli._cleanup()
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
+        if cli:
+            cli._cleanup()
+    finally:
+        sys.exit(0)
 
 @main.command()
 @click.argument("username")
