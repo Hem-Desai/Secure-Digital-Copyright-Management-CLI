@@ -15,6 +15,7 @@ from src.auth.rbac import RBACManager
 from src.storage.db_storage import SQLiteStorage
 from src.services.secure_enclave_service import SecureEnclaveService
 from src.models.content_type import ContentType
+import sqlite3
 
 # Constants
 SESSION_FILE = ".session"
@@ -319,9 +320,43 @@ class CLI:
         """Handle user creation interactively"""
         print("\nCreate New User")
         print("==============")
-        username = input("Enter username: ")
-        password = input("Enter password: ")
         
+        # Get username
+        username = input("Enter username: ")
+        if not username:
+            print("Username cannot be empty")
+            return
+            
+        # Check if username already exists
+        if self.db.get_user_by_username(username):
+            print("Username already exists")
+            return
+            
+        # Show password requirements
+        print("\nPassword must meet the following requirements:")
+        print("- Minimum 12 characters")
+        print("- At least one uppercase letter")
+        print("- At least one lowercase letter")
+        print("- At least one number")
+        print("- At least one special character (!@#$%^&*(),.?\":{}|<>)")
+        print("- No common patterns (e.g., 12345, qwerty, password)")
+        print("- No repeated characters (3 or more of the same character)")
+        print("- No common words (e.g., admin, user, login, test)")
+        
+        # Get and confirm password
+        password = getpass.getpass("\nEnter password: ")
+        confirm_password = getpass.getpass("Confirm password: ")
+        
+        if password != confirm_password:
+            print("Passwords do not match")
+            return
+            
+        # Validate password complexity
+        if not self.rbac_manager._validate_password(password):
+            print("Password does not meet complexity requirements")
+            return
+        
+        # Get role
         if self.current_user and self.current_user.role == UserRole.ADMIN:
             print("\nSelect role:")
             print("1. Admin")
@@ -330,17 +365,18 @@ class CLI:
             role_choice = input("Enter role (1-3): ")
             role_map = {"1": UserRole.ADMIN, "2": UserRole.OWNER, "3": UserRole.VIEWER}
             role = role_map.get(role_choice)
+            
+            if not role:
+                print("Invalid role selected")
+                return
         else:
             role = UserRole.OWNER
 
-        if not role:
-            print("Invalid role selected.")
-            return
-
+        # Create user
         if self.create_user(username, password, role):
-            print(f"User {username} created successfully!")
+            print(f"\nUser {username} created successfully with role {role.value}!")
         else:
-            print("Failed to create user. Please check requirements and try again.")
+            print("Failed to create user. Please try again.")
 
     def login_menu(self):
         """Handle login interactively"""
@@ -585,6 +621,181 @@ class CLI:
         
         print("=" * len(header))
         print(f"\nTotal artifacts: {len(artifacts)}")
+
+    def manage_users_menu(self):
+        """Handle user management operations"""
+        if not self.current_user or self.current_user.role != UserRole.ADMIN:
+            print("Only administrators can manage users")
+            return
+
+        while True:
+            print("\nManage Users")
+            print("============")
+            print("1. List all users")
+            print("2. Reset user password")
+            print("3. Lock/Unlock user")
+            print("4. Delete user")
+            print("5. Back to main menu")
+
+            choice = input("\nEnter your choice (1-5): ")
+
+            if choice == "1":
+                self._list_users()
+            elif choice == "2":
+                self._reset_user_password()
+            elif choice == "3":
+                self._toggle_user_lock()
+            elif choice == "4":
+                self._delete_user()
+            elif choice == "5":
+                break
+            else:
+                print("Invalid choice. Please try again.")
+
+    def _list_users(self):
+        """List all users in the system"""
+        users = self.db.list("users")
+        if not users:
+            print("\nNo users found")
+            return
+
+        print("\nUser List:")
+        print("==========")
+        for user in users:
+            status = "LOCKED" if user["account_locked"] else "ACTIVE"
+            print(f"\nUsername: {user['username']}")
+            print(f"Role: {user['role']}")
+            print(f"Status: {status}")
+            print(f"Failed login attempts: {user['failed_login_attempts']}")
+            print(f"Last password change: {datetime.fromtimestamp(user['password_last_changed']).strftime('%Y-%m-%d %H:%M:%S')}")
+
+    def _reset_user_password(self):
+        """Reset a user's password"""
+        username = input("\nEnter username to reset password: ")
+        user_data = self.db.get_user_by_username(username)
+        
+        if not user_data:
+            print("User not found")
+            return
+            
+        print("\nNew password must meet the following requirements:")
+        print("- Minimum 12 characters")
+        print("- At least one uppercase letter")
+        print("- At least one lowercase letter")
+        print("- At least one number")
+        print("- At least one special character (!@#$%^&*(),.?\":{}|<>)")
+        print("- No common patterns (e.g., 12345, qwerty, password)")
+        print("- No repeated characters (3 or more of the same character)")
+        print("- No common words (e.g., admin, user, login, test)")
+        
+        new_password = getpass.getpass("\nEnter new password: ")
+        confirm_password = getpass.getpass("Confirm new password: ")
+        
+        if new_password != confirm_password:
+            print("Passwords do not match")
+            return
+            
+        # Validate password complexity
+        if not self.rbac_manager._validate_password(new_password):
+            print("Password does not meet complexity requirements")
+            return
+            
+        # Hash new password
+        new_hash = self.rbac_manager.hash_password(new_password)
+        
+        # Update password in database
+        success = self.db.update({
+            "table": "users",
+            "id": user_data["id"],
+            "password_hash": new_hash,
+            "password_last_changed": datetime.now().timestamp(),
+            "failed_login_attempts": 0,
+            "account_locked": False
+        })
+        
+        if success:
+            print(f"\nPassword reset successful for user {username}")
+            self.logger.log_event(
+                "password_reset",
+                self.current_user.id,
+                {"target_user": username}
+            )
+        else:
+            print("Failed to reset password")
+
+    def _toggle_user_lock(self):
+        """Lock or unlock a user account"""
+        username = input("\nEnter username to toggle lock status: ")
+        user_data = self.db.get_user_by_username(username)
+        
+        if not user_data:
+            print("User not found")
+            return
+            
+        if user_data["role"] == "admin":
+            print("Cannot lock/unlock admin accounts")
+            return
+            
+        new_status = not user_data["account_locked"]
+        success = self.db.update({
+            "table": "users",
+            "id": user_data["id"],
+            "account_locked": new_status,
+            "failed_login_attempts": 0 if not new_status else user_data["failed_login_attempts"]
+        })
+        
+        if success:
+            status = "locked" if new_status else "unlocked"
+            print(f"\nUser {username} has been {status}")
+            self.logger.log_event(
+                "account_status_change",
+                self.current_user.id,
+                {"target_user": username, "new_status": status}
+            )
+        else:
+            print("Failed to update user status")
+
+    def _delete_user(self):
+        """Delete a user from the system"""
+        username = input("\nEnter username to delete: ")
+        user_data = self.db.get_user_by_username(username)
+        
+        if not user_data:
+            print("User not found")
+            return
+            
+        if user_data["role"] == "admin":
+            print("Cannot delete admin accounts")
+            return
+            
+        confirm = input(f"\nAre you sure you want to delete user {username}? (y/N): ")
+        if confirm.lower() != 'y':
+            print("Deletion cancelled")
+            return
+            
+        # Delete user's artifacts first
+        artifacts = self.db.list("artifacts")
+        for artifact in artifacts:
+            if artifact["owner_id"] == user_data["id"]:
+                self.db.delete(artifact["id"], "artifacts")
+                
+        # Delete user's entries in user_artifacts
+        with sqlite3.connect(self.db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_artifacts WHERE user_id = ?", (user_data["id"],))
+            
+        # Finally delete the user
+        success = self.db.delete(user_data["id"], "users")
+        
+        if success:
+            print(f"\nUser {username} has been deleted")
+            self.logger.log_event(
+                "user_deletion",
+                self.current_user.id,
+                {"target_user": username}
+            )
+        else:
+            print("Failed to delete user")
 
 @click.group()
 @click.pass_context

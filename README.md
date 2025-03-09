@@ -6,7 +6,7 @@ A secure CLI-based application for managing digital copyright artifacts with rol
 
 - **Role-Based Access Control (RBAC)**
 
-  - Admin: Full system access
+  - Admin: Full system access and user management
   - Owner: Manage owned artifacts
   - Viewer: Read-only access
 
@@ -14,13 +14,35 @@ A secure CLI-based application for managing digital copyright artifacts with rol
 
   - AES-256 encryption for all stored files
   - Bcrypt password hashing with high work factor (12 rounds)
-  - Secure password requirements enforcement
+  - Secure password requirements enforcement:
+    - Minimum 12 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character (!@#$%^&\*(),.?":{}|<>)
+    - No common patterns (e.g., 12345, qwerty, password)
+    - No repeated characters (3 or more of the same character)
+    - No common words (e.g., admin, user, login, test)
   - File integrity verification with checksums
-  - Rate limiting for login attempts
-  - Account lockout protection
+  - Rate limiting for login attempts (30-second delay between attempts)
+  - Account lockout after multiple failed attempts
   - Comprehensive audit logging
   - Path traversal protection
   - Secure file size validation
+  - Automatic session cleanup on program termination
+  - Signal handling for graceful shutdown
+
+- **User Management Features (Admin Only)**
+
+  - List all users with detailed information:
+    - Username and role
+    - Account status (active/locked)
+    - Failed login attempts count
+    - Last password change timestamp
+  - Reset user passwords with complexity validation
+  - Lock/unlock user accounts (except admin accounts)
+  - Delete users with automatic artifact cleanup
+  - Create new users with role assignment
 
 - **Media File Support**
   - Audio: MP3, WAV
@@ -114,15 +136,48 @@ After logging in, you'll see options based on your role:
 
 ```
 Welcome [username]!
-1. Upload artifact
-2. Download artifact
-3. List artifacts
-4. Show my info
-5. Create user (Admin only)
-6. Delete artifact (Admin/Owner only)
-7. Logout
-8. Exit
+
+Available Actions:
+1. Create new user (Admin only)
+2. Manage users (Admin only)
+3. Upload artifact (Admin/Owner)
+4. Download artifact (Admin/Owner)
+5. Delete artifact (Admin/Owner)
+6. List artifacts
+7. Show my info
+8. Logout
 ```
+
+### User Management (Admin Only)
+
+1. **List Users**
+
+   ```
+   User List:
+   ==========
+   Username: admin
+   Role: admin
+   Status: ACTIVE
+   Failed login attempts: 0
+   Last password change: 2024-03-14 15:30:00
+   ```
+
+2. **Reset User Password**
+
+   - Enter username to reset
+   - Provide new password meeting complexity requirements
+   - Automatically unlocks account and resets failed attempts
+
+3. **Lock/Unlock User**
+
+   - Toggle account lock status
+   - Cannot lock admin accounts
+   - Automatically manages failed login attempts
+
+4. **Delete User**
+   - Remove user from system
+   - Automatically deletes user's artifacts
+   - Cannot delete admin accounts
 
 ### Artifact Management
 
@@ -302,7 +357,3 @@ Guidelines for contributing to the project:
 3. Make your changes following the coding standards
 4. Add tests for new functionality
 5. Submit a pull request with a clear description
-
-## License
-
-[Insert License Information]
