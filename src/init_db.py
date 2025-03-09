@@ -5,18 +5,59 @@ import bcrypt
 import time
 import uuid
 import getpass
+import re
 
 # Add project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.user import User, UserRole
+from src.storage.db_storage import DATABASE_PATH
+
+def validate_password(password: str) -> bool:
+    """
+    Validate password strength requirements:
+    - Minimum 12 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character from: !@#$%^&*(),.?":{}|<>
+    - No common patterns or repeated characters
+    """
+    if len(password) < 12:
+        return False
+        
+    if not re.search(r"[A-Z]", password):
+        return False
+        
+    if not re.search(r"[a-z]", password):
+        return False
+        
+    if not re.search(r"\d", password):
+        return False
+        
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return False
+        
+    # Check for common patterns and repeated characters
+    common_patterns = [
+        r"12345", r"qwerty", r"password", r"admin",
+        r"([a-zA-Z0-9])\1{2,}",  # Repeated characters
+        r"abc", r"123", r"admin", r"user", r"login",
+        r"test", r"demo", r"guest", r"default"
+    ]
+    
+    for pattern in common_patterns:
+        if re.search(pattern, password, re.IGNORECASE):
+            return False
+            
+    return True
 
 def init_db():
     # Create database directory if it doesn't exist
-    os.makedirs('data', exist_ok=True)
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     
     # Connect to database
-    conn = sqlite3.connect('data/users.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     
     # Drop existing tables
@@ -89,13 +130,30 @@ def init_db():
     
     for username, role in default_users:
         print(f"\nCreating {role.value} user: {username}")
-        password = getpass.getpass(f"Enter password for {username}: ")
-        confirm = getpass.getpass("Confirm password: ")
-        
-        if password != confirm:
-            print("Passwords do not match")
-            continue
+        while True:
+            print("\nPassword requirements:")
+            print("- Minimum 12 characters")
+            print("- At least one uppercase letter")
+            print("- At least one lowercase letter")
+            print("- At least one number")
+            print("- At least one special character (!@#$%^&*(),.?\":{}|<>)")
+            print("- No common patterns (e.g., 12345, qwerty, password)")
+            print("- No repeated characters (3 or more of the same character)")
+            print("- No common words (e.g., admin, user, login, test)")
             
+            password = getpass.getpass(f"\nEnter password for {username}: ")
+            confirm = getpass.getpass("Confirm password: ")
+            
+            if password != confirm:
+                print("\nPasswords do not match. Please try again.")
+                continue
+                
+            if not validate_password(password):
+                print("\nPassword does not meet complexity requirements. Please try again.")
+                continue
+                
+            break
+        
         # Hash password
         salt = bcrypt.gensalt()
         password_hash = bcrypt.hashpw(password.encode(), salt)

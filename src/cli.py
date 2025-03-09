@@ -167,18 +167,29 @@ class CLI:
             return False
             
         # Store user in database
-        self.db.create({
+        user_data = {
             "table": "users",
             "id": user.id,
             "username": user.username,
             "password_hash": user.password_hash,
             "role": user.role.value,
             "created_at": user.created_at,
+            "failed_login_attempts": 0,
+            "last_login_attempt": 0,
+            "account_locked": False,
             "password_last_changed": datetime.now().timestamp()
-        })
+        }
         
-        print(f"User {username} created successfully with role {role.value}")
-        return True
+        try:
+            if self.db.create(user_data):
+                print(f"User {username} created successfully with role {role.value}")
+                return True
+            else:
+                print("Failed to create user in database")
+                return False
+        except Exception as e:
+            print(f"Error creating user: {str(e)}")
+            return False
 
     def login_with_credentials(self, username: str, password: str) -> bool:
         """Handle user login with rate limiting"""
@@ -578,8 +589,31 @@ class CLI:
         print("===============")
         print(f"Username: {self.current_user.username}")
         print(f"Role: {self.current_user.role.value}")
-        if self.current_user.role == UserRole.OWNER:
-            print(f"Owned artifacts: {len(self.current_user.artifacts)}")
+        
+        # Get artifacts based on user role
+        artifacts = []
+        if self.current_user.role == UserRole.ADMIN:
+            artifacts = self.secure_enclave.list_artifacts(self.current_user)
+            print(f"Total artifacts in system: {len(artifacts)}")
+        elif self.current_user.role == UserRole.OWNER:
+            artifacts = self.secure_enclave.list_artifacts(self.current_user)
+            print(f"Your artifacts: {len(artifacts)}")
+            if artifacts:
+                print("\nArtifact Details:")
+                for artifact in artifacts:
+                    print(f"- {artifact['name']} ({artifact['content_type']}, {artifact['file_size']} bytes)")
+        else:  # Viewer
+            artifacts = self.secure_enclave.list_artifacts(self.current_user)
+            print(f"Viewable artifacts: {len(artifacts)}")
+            
+        # Show additional user info
+        user_data = self.db.get_user_by_username(self.current_user.username)
+        if user_data:
+            status = "LOCKED" if user_data.get("account_locked") else "ACTIVE"
+            print(f"\nAccount Status: {status}")
+            print(f"Failed login attempts: {user_data.get('failed_login_attempts', 0)}")
+            last_changed = datetime.fromtimestamp(user_data.get('password_last_changed', 0))
+            print(f"Last password change: {last_changed.strftime('%Y-%m-%d %H:%M:%S')}")
 
     def list_artifacts(self):
         """List available artifacts"""

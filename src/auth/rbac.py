@@ -2,7 +2,7 @@ import bcrypt
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 from ..models.user import User, UserRole
-from ..storage.db_storage import SQLiteStorage
+from ..storage.db_storage import SQLiteStorage, DATABASE_PATH
 import re
 from datetime import datetime
 import sqlite3
@@ -21,7 +21,7 @@ class RBACManager:
     def __init__(self):
         """Initialize RBAC manager"""
         self._users = {}  # In-memory cache of users
-        self.db_path = 'data/users.db'  # Path to SQLite database
+        self.db_path = DATABASE_PATH  # Use the same database path
         
         # Define permission matrix for each role
         self._permissions: Dict[UserRole, List[Permission]] = {
@@ -48,9 +48,9 @@ class RBACManager:
     def _create_default_users(self):
         """Create default users with secure passwords if they don't exist"""
         default_users = [
-            ("admin", "Adm!nCtr1#2024", UserRole.ADMIN),
-            ("owner", "Own3rSh!p$2024", UserRole.OWNER),
-            ("viewer", "V!ewUs3r@2024", UserRole.VIEWER)
+            ("admin", "Admin@Pass123!", UserRole.ADMIN),
+            ("owner", "Owner@Pass123!", UserRole.OWNER),
+            ("viewer", "Viewer@Pass123!", UserRole.VIEWER)
         ]
         
         for username, password, role in default_users:
@@ -142,25 +142,46 @@ class RBACManager:
             
     def create_user(self, username: str, password: str, role: UserRole) -> Optional[User]:
         """Create a new user with secure password"""
-        if not self._validate_password(password):
-            return None
+        try:
+            # Validate password
+            if not self._validate_password(password):
+                return None
+                
+            # Check if username already exists
+            if self.db.get_user_by_username(username):
+                print("Username already exists")
+                return None
+                
+            # Generate secure user ID using uuid
+            user_id = str(uuid.uuid4())
             
-        # Generate secure user ID
-        user_id = os.urandom(16).hex()
-        
-        # Hash password with increased security
-        password_hash = self.hash_password(password)
-        
-        # Create user with current timestamp
-        created_at = datetime.now().timestamp()
-        
-        return User(
-            id=user_id,
-            username=username,
-            password_hash=password_hash,
-            role=role,
-            created_at=created_at
-        )
+            # Hash password with increased security
+            password_hash = self.hash_password(password)
+            
+            # Create user with current timestamp
+            created_at = datetime.now().timestamp()
+            
+            user = User(
+                id=user_id,
+                username=username,
+                password_hash=password_hash,
+                role=role,
+                created_at=created_at,
+                artifacts=[],
+                failed_login_attempts=0,
+                last_login_attempt=0,
+                account_locked=False,
+                password_last_changed=created_at
+            )
+            
+            # Add to in-memory cache
+            self._users[username] = user
+            
+            return user
+            
+        except Exception as e:
+            print(f"Error creating user: {str(e)}")
+            return None
         
     def authenticate(self, username: str, password: str) -> Optional[User]:
         """Authenticate user and verify password"""

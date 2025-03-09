@@ -7,13 +7,17 @@ import uuid
 import sqlite3
 from typing import Dict, Tuple, Optional
 from datetime import datetime
+from ..storage.db_storage import DATABASE_PATH
 
 from .encryption_strategy import EncryptionStrategy
 
 class AESHandler(EncryptionStrategy):
-    def __init__(self, db_path: str = "secure_dcm.db"):
-        self._keys: Dict[str, bytes] = {}
-        self.db_path = db_path
+    """Handles AES encryption/decryption of files"""
+    
+    def __init__(self):
+        """Initialize encryption handler"""
+        self._keys: Dict[str, bytes] = {}  # In-memory key storage
+        self.db_path = DATABASE_PATH
         self._load_keys_from_db()
         
     def _load_keys_from_db(self):
